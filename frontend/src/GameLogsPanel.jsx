@@ -98,6 +98,11 @@ const P = {
   empty:  { textAlign: "center", color: "#8a7fa0", fontSize: 12, padding: "20px 0", margin: 0 },
 };
 
+const NO_SCROLL_CSS = `
+  .gp-list::-webkit-scrollbar { display: none; }
+  .gp-list { -ms-overflow-style: none; scrollbar-width: none; }
+`;
+
 export default function GameLogsPanel({ game, newEntry, mobile = false }) {
   const [logs, setLogs]       = useState([]);
   const [loading, setLoading] = useState(true);
@@ -126,12 +131,13 @@ export default function GameLogsPanel({ game, newEntry, mobile = false }) {
 
   return (
     <div style={wrapStyle}>
+      <style>{NO_SCROLL_CSS}</style>
       <div style={P.head}>
         <p style={P.title}>📋 Riwayat</p>
         <span style={P.count}>{logs.length}</span>
       </div>
 
-      <div style={P.list} ref={listRef}>
+      <div style={P.list} className="gp-list" ref={listRef}>
         {loading ? (
           <p style={P.empty}>Memuat…</p>
         ) : logs.length === 0 ? (

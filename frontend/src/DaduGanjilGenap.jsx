@@ -137,7 +137,7 @@ export default function DaduGanjilGenap({ onTopUp }) {
     <div className="dg-root">
       <style>{css}</style>
 
-      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 16, alignItems: "flex-start", width: "100%" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 16, alignItems: "flex-start", width: isMobile ? "100%" : undefined }}>
       <div className="table" style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", width: isMobile ? "100%" : undefined }}>
         {/* HEADER */}
         <header className="hd">
