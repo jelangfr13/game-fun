@@ -97,7 +97,7 @@ const P = {
   empty:  { textAlign: "center", color: "#8a7fa0", fontSize: 12, padding: "20px 0", margin: 0 },
 };
 
-export default function GameLogsPanel({ game, newEntry }) {
+export default function GameLogsPanel({ game, newEntry, mobile = false }) {
   const [logs, setLogs]       = useState([]);
   const [loading, setLoading] = useState(true);
   const listRef               = useRef(null);
@@ -119,8 +119,12 @@ export default function GameLogsPanel({ game, newEntry }) {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [newEntry]);
 
+  const wrapStyle = mobile
+    ? { ...P.wrap, width: "100%", position: "static", maxHeight: 320, flexShrink: 1 }
+    : P.wrap;
+
   return (
-    <div style={P.wrap}>
+    <div style={wrapStyle}>
       <div style={P.head}>
         <p style={P.title}>📋 Riwayat</p>
         <span style={P.count}>{logs.length}</span>

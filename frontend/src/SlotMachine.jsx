@@ -3,6 +3,7 @@ import { BETS, fmt } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import { startSlotSpin, playReelStop, playWin, playLose } from "./sounds";
 import GameLogsPanel from "./GameLogsPanel";
+import useIsMobile from "./useIsMobile";
 
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,8 @@ export default function SlotMachine({ onTopUp }) {
   const [outcome, setOutcome]       = useState(null);
   const [toast, setToast]           = useState(null);
   const [latestLog, setLatestLog]   = useState(null);
+  const [showPayouts, setShowPayouts] = useState(false);
+  const isMobile = useIsMobile();
 
   const intv        = useRef([null, null, null]);
   const tmrs        = useRef([]);
@@ -250,33 +253,35 @@ export default function SlotMachine({ onTopUp }) {
     : [];
 
   return (
-    <div style={s.root}>
+    <div style={{ ...s.root, ...(isMobile ? { padding: "12px 10px 40px" } : {}) }}>
       <style>{globalCss}</style>
-      <div style={s.layout}>
+      <div style={isMobile ? s.layoutMobile : s.layout}>
 
-        {/* LEFT: PAYOUT TABLE */}
-        <div style={s.payoutsPanel}>
-          <p style={s.payoutsPanelTitle}>Tabel Bayar</p>
-          <div style={s.payoutGrid}>
-            {PAYOUT_DISPLAY.map((p, i) => (
-              <div key={i} style={s.payoutRow}>
-                <span style={s.payoutSyms}>
-                  {p.note
-                    ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                    : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                  }
-                </span>
-                <span style={s.payoutMult}>
-                  {p.multi}×
-                  {p.label && <span style={s.payoutLabel}> {p.label}</span>}
-                </span>
-              </div>
-            ))}
+        {/* LEFT: PAYOUT TABLE — desktop only */}
+        {!isMobile && (
+          <div style={s.payoutsPanel}>
+            <p style={s.payoutsPanelTitle}>Tabel Bayar</p>
+            <div style={s.payoutGrid}>
+              {PAYOUT_DISPLAY.map((p, i) => (
+                <div key={i} style={s.payoutRow}>
+                  <span style={s.payoutSyms}>
+                    {p.note
+                      ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                      : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                    }
+                  </span>
+                  <span style={s.payoutMult}>
+                    {p.multi}×
+                    {p.label && <span style={s.payoutLabel}> {p.label}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* CENTER: MACHINE */}
-        <div style={s.machine}>
+        {/* CENTER / TOP: MACHINE */}
+        <div style={isMobile ? { ...s.machine, maxWidth: "100%" } : s.machine}>
 
         {/* HEADER */}
         <header style={s.header}>
@@ -304,6 +309,7 @@ export default function SlotMachine({ onTopUp }) {
                   return (
                     <div
                       key={col}
+                      className={isPayline ? "slot-cell-pl" : "slot-cell"}
                       style={{
                         ...s.cell,
                         ...(isPayline ? s.cellPayline : {}),
@@ -346,7 +352,7 @@ export default function SlotMachine({ onTopUp }) {
         {/* BET */}
         <div style={s.section}>
           <div style={s.sectionLabel}>Jumlah taruhan</div>
-          <div style={s.bets}>
+          <div style={s.bets} className="slot-bets">
             {BETS.map(b => {
               const tooMuch = !loading && b > balance;
               return (
@@ -390,10 +396,37 @@ export default function SlotMachine({ onTopUp }) {
           <p style={s.broke}>Saldo habis. Klik tombol Saldo untuk top-up.</p>
         )}
 
+        {/* Mobile: collapsible payout table */}
+        {isMobile && (
+          <div style={s.payoutSection}>
+            <button style={s.payoutToggle} onClick={() => setShowPayouts(p => !p)}>
+              {showPayouts ? "▲" : "▼"} Tabel Pembayaran
+            </button>
+            {showPayouts && (
+              <div style={s.payoutGrid}>
+                {PAYOUT_DISPLAY.map((p, i) => (
+                  <div key={i} style={s.payoutRow}>
+                    <span style={s.payoutSyms}>
+                      {p.note
+                        ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                        : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                      }
+                    </span>
+                    <span style={s.payoutMult}>
+                      {p.multi}×
+                      {p.label && <span style={s.payoutLabel}> {p.label}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         </div>{/* end machine */}
 
-        {/* RIGHT: LOGS */}
-        <GameLogsPanel game="slot" newEntry={latestLog} />
+        {/* RIGHT / BOTTOM: LOGS */}
+        <GameLogsPanel game="slot" newEntry={latestLog} mobile={isMobile} />
 
       </div>{/* end layout */}
 
@@ -423,6 +456,10 @@ const s = {
   layout: {
     display: "flex", gap: 24, alignItems: "flex-start",
     width: "100%", maxWidth: 1040,
+  },
+  layoutMobile: {
+    display: "flex", flexDirection: "column", gap: 16,
+    width: "100%",
   },
   machine: { flex: "0 0 auto", width: "100%", maxWidth: 480 },
 
@@ -610,4 +647,9 @@ const s = {
 const globalCss = `
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=DM+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
   @keyframes rise { from { opacity:0; transform:translate(-50%,-10px); } to { opacity:1; transform:translate(-50%,0); } }
+  @media (max-width: 480px) {
+    .slot-cell        { width:64px !important; height:58px !important; font-size:26px !important; border-radius:10px !important; }
+    .slot-cell-pl     { width:72px !important; height:66px !important; font-size:30px !important; }
+    .slot-bets        { grid-template-columns: repeat(2,1fr) !important; }
+  }
 `;

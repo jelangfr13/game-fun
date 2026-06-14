@@ -190,6 +190,10 @@ const css = `
   .die--rolling{ animation:none; }
   .toast{ animation:none; }
 }
+@media (max-width: 480px){
+  .dg-root{ padding:8px 8px 40px; align-items:flex-start; }
+  .bets{ grid-template-columns:repeat(2,1fr); }
+}
 `;
 
 export default css;

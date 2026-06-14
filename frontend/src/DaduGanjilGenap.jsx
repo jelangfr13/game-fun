@@ -5,6 +5,7 @@ import Die from "./dadu/Die";
 import css from "./dadu/styles";
 import { startDiceRoll, playDiceLand, playWin, playLose } from "./sounds";
 import GameLogsPanel from "./GameLogsPanel";
+import useIsMobile from "./useIsMobile";
 
 export default function DaduGanjilGenap({ onTopUp }) {
   const [balance, setBalance] = useState(null);
@@ -15,6 +16,7 @@ export default function DaduGanjilGenap({ onTopUp }) {
   const [outcome, setOutcome] = useState(null);
   const [toast, setToast]         = useState(null);
   const [latestLog, setLatestLog] = useState(null);
+  const isMobile   = useIsMobile();
   const rollTimer  = useRef(null);
   const spinTimer  = useRef(null);
   const stopSound  = useRef(null);
@@ -135,8 +137,8 @@ export default function DaduGanjilGenap({ onTopUp }) {
     <div className="dg-root">
       <style>{css}</style>
 
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-      <div className="table" style={{ flex: "0 0 auto" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 16, alignItems: "flex-start", width: "100%" }}>
+      <div className="table" style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", width: isMobile ? "100%" : undefined }}>
         {/* HEADER */}
         <header className="hd">
           <div className="hd__brand">
@@ -241,7 +243,7 @@ export default function DaduGanjilGenap({ onTopUp }) {
         )}
       </div>{/* end table */}
 
-      <GameLogsPanel game="dadu" newEntry={latestLog} />
+      <GameLogsPanel game="dadu" newEntry={latestLog} mobile={isMobile} />
       </div>{/* end flex row */}
 
       {toast && <div className={"toast toast--" + toast.type}>{toast.text}</div>}

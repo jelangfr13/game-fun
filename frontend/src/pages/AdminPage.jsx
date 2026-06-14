@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { fmt } from "../dadu/constants";
+import useIsMobile from "../useIsMobile";
 
 const AMOUNTS = [5000, 10000, 20000, 50000, 100000];
 
@@ -11,9 +12,13 @@ function authHeader() {
 
 export default function AdminPage() {
   const [tab, setTab] = useState("codes");
+  const isMobile = useIsMobile();
+
+  const rootStyle = isMobile ? { ...s.root, padding: "8px 8px 48px" } : s.root;
+  const cardPad   = isMobile ? 14 : 24;
 
   return (
-    <div style={s.root}>
+    <div style={rootStyle}>
       <div style={s.container}>
         <div style={s.tabs}>
           <button
@@ -42,10 +47,10 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {tab === "codes"   && <CodesTab />}
-        {tab === "users"   && <UsersTab />}
-        {tab === "jackpot" && <JackpotTab />}
-        {tab === "logs"    && <LogsTab />}
+        {tab === "codes"   && <CodesTab   isMobile={isMobile} cardPad={cardPad} />}
+        {tab === "users"   && <UsersTab   isMobile={isMobile} cardPad={cardPad} />}
+        {tab === "jackpot" && <JackpotTab isMobile={isMobile} cardPad={cardPad} />}
+        {tab === "logs"    && <LogsTab    isMobile={isMobile} cardPad={cardPad} />}
       </div>
     </div>
   );
@@ -151,7 +156,7 @@ function codeUses(c) {
   return c.usedBy ? "1 / 1" : "0 / 1";
 }
 
-function CodesTab() {
+function CodesTab({ isMobile = false, cardPad = 24 }) {
   const [amount, setAmount] = useState(10000);
   const [custom, setCustom] = useState("");
   const [useCustom, setUseCustom] = useState(false);
@@ -210,9 +215,11 @@ function CodesTab() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const codesCols = isMobile ? "1fr 90px 60px" : "1fr 110px 90px 90px";
+
   return (
     <>
-      <div style={s.card}>
+      <div style={{ ...s.card, padding: cardPad }}>
         <h3 style={s.cardTitle}>Generate Kode Redeem</h3>
 
         <p style={s.label}>Pilih nominal</p>
@@ -320,7 +327,7 @@ function CodesTab() {
         )}
       </div>
 
-      <div style={s.card}>
+      <div style={{ ...s.card, padding: cardPad }}>
         <div style={s.rowBetween}>
           <h3 style={s.cardTitle}>Semua Kode</h3>
           <button style={s.refreshBtn} onClick={fetchCodes}>↻ Refresh</button>
@@ -330,19 +337,19 @@ function CodesTab() {
           <p style={s.empty}>Belum ada kode.</p>
         ) : (
           <div style={s.table}>
-            <div style={{ ...s.tableRow, ...s.tableHead, ...s.tableRowWide }}>
+            <div style={{ ...s.tableRow, ...s.tableHead, gridTemplateColumns: codesCols }}>
               <span>Kode</span>
               <span>Nominal</span>
-              <span>Penggunaan</span>
+              {!isMobile && <span>Penggunaan</span>}
               <span>Status</span>
             </div>
             {codes.map((c) => {
               const st = codeStatus(c);
               return (
-                <div key={c._id} style={{ ...s.tableRow, ...s.tableRowWide }}>
+                <div key={c._id} style={{ ...s.tableRow, gridTemplateColumns: codesCols }}>
                   <code style={s.codeCell}>{c.code}</code>
                   <span style={{ fontSize: 13, color: C.cream }}>🪙 {fmt(c.amount)}</span>
-                  <span style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>{codeUses(c)}</span>
+                  {!isMobile && <span style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>{codeUses(c)}</span>}
                   <span>
                     {st === "habis"   && <span style={s.badgeUsed}>Habis</span>}
                     {st === "partial" && <span style={s.badgePart}>Sebagian</span>}
@@ -360,7 +367,7 @@ function CodesTab() {
 
 // ── USERS TAB ─────────────────────────────────────────────────────────────────
 
-function UsersTab() {
+function UsersTab({ isMobile = false, cardPad = 24 }) {
   const [users, setUsers]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [editing, setEditing]   = useState(null);
@@ -430,13 +437,13 @@ function UsersTab() {
     }
   };
 
-  if (loading) return <div style={s.card}><p style={s.empty}>Memuat data pengguna…</p></div>;
+  if (loading) return <div style={{ ...s.card, padding: cardPad }}><p style={s.empty}>Memuat data pengguna…</p></div>;
 
   const filtered = users.filter(u => u.username.toLowerCase().includes(search.toLowerCase()));
   const paged    = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <div style={s.card}>
+    <div style={{ ...s.card, padding: cardPad }}>
       <div style={s.rowBetween}>
         <h3 style={s.cardTitle}>Pengguna <span style={s.countBadge}>{users.length}</span></h3>
         <button style={s.refreshBtn} onClick={fetchUsers}>↻ Refresh</button>
@@ -537,7 +544,7 @@ function UsersTab() {
 
 // ── JACKPOT TAB ───────────────────────────────────────────────────────────────
 
-function JackpotTab() {
+function JackpotTab({ isMobile = false, cardPad = 24 }) {
   const [users, setUsers]       = useState([]);
   const [jackpots, setJackpots] = useState([]);
   const [wins, setWins]         = useState([]);
@@ -636,14 +643,21 @@ function JackpotTab() {
     finally { setBusy(null); }
   };
 
-  if (loading) return <div style={s.card}><p style={s.empty}>Memuat data…</p></div>;
+  if (loading) return <div style={{ ...s.card, padding: cardPad }}><p style={s.empty}>Memuat data…</p></div>;
 
   const activeCount = wins.length + loses.length + jackpots.length;
+
+  const ctrlRowStyle = isMobile
+    ? { ...s.controlsRow, flexDirection: "column" }
+    : s.controlsRow;
+  const ctrlDivStyle = isMobile
+    ? { width: "100%", height: 1, background: `${C.line}88`, flexShrink: 0 }
+    : s.controlDivider;
 
   return (
     <>
       {/* ACTIVE STATUS SUMMARY */}
-      <div style={s.card}>
+      <div style={{ ...s.card, padding: cardPad }}>
         <div style={s.rowBetween}>
           <h3 style={s.cardTitle}>
             Status Aktif
@@ -723,7 +737,7 @@ function JackpotTab() {
       </div>
 
       {/* USER LIST */}
-      <div style={s.card}>
+      <div style={{ ...s.card, padding: cardPad }}>
         <div style={s.rowBetween}>
           <h3 style={s.cardTitle}>Kontrol per User</h3>
           <button style={s.refreshBtn} onClick={fetchAll}>↻ Refresh</button>
@@ -771,7 +785,7 @@ function JackpotTab() {
                       </div>
 
                       {/* WIN | LOSE | JACKPOT controls */}
-                      <div style={s.controlsRow}>
+                      <div style={ctrlRowStyle}>
                         {/* WIN */}
                         <div style={s.controlGroup}>
                           <span style={{ ...s.controlLabel, color: hasWin ? C.win : C.muted }}>
@@ -795,7 +809,7 @@ function JackpotTab() {
                           )}
                         </div>
 
-                        <div style={s.controlDivider} />
+                        <div style={ctrlDivStyle} />
 
                         {/* LOSE */}
                         <div style={s.controlGroup}>
@@ -820,7 +834,7 @@ function JackpotTab() {
                           )}
                         </div>
 
-                        <div style={s.controlDivider} />
+                        <div style={ctrlDivStyle} />
 
                         {/* JACKPOT */}
                         <div style={s.controlGroup}>
@@ -913,7 +927,7 @@ function fmtTime(iso) {
 const RESULT_FILTERS = ["semua", "win", "jackpot", "impas", "lose"];
 const GAME_FILTERS   = ["semua", "slot", "dadu"];
 
-function LogsTab() {
+function LogsTab({ isMobile = false, cardPad = 24 }) {
   const [logs, setLogs]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
@@ -936,7 +950,7 @@ function LogsTab() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-  if (loading) return <div style={s.card}><p style={s.empty}>Memuat logs…</p></div>;
+  if (loading) return <div style={{ ...s.card, padding: cardPad }}><p style={s.empty}>Memuat logs…</p></div>;
 
   const filtered = logs.filter(l => {
     const matchUser   = l.username.toLowerCase().includes(search.toLowerCase());
@@ -951,8 +965,10 @@ function LogsTab() {
   const totalLose = filtered.filter(l => l.result === "lose").length;
   const netDelta  = filtered.reduce((sum, l) => sum + l.delta, 0);
 
+  const logCols = isMobile ? "1fr 58px 64px" : "1fr 52px 70px 70px 72px";
+
   return (
-    <div style={s.card}>
+    <div style={{ ...s.card, padding: cardPad }}>
       {/* Header */}
       <div style={s.rowBetween}>
         <h3 style={s.cardTitle}>
@@ -1014,24 +1030,28 @@ function LogsTab() {
       ) : (
         <>
           {/* Head */}
-          <div style={{ ...s.logRow, ...s.logHead }}>
+          <div style={{ ...s.logRow, ...s.logHead, gridTemplateColumns: logCols }}>
             <span>User</span>
-            <span>Game</span>
-            <span style={{ textAlign: "right" }}>Bet</span>
+            {!isMobile && <span>Game</span>}
+            {!isMobile && <span style={{ textAlign: "right" }}>Bet</span>}
             <span style={{ textAlign: "center" }}>Hasil</span>
             <span style={{ textAlign: "right" }}>Delta</span>
           </div>
           {/* Rows */}
           {paged.map((l) => (
-            <div key={l._id} style={s.logRow}>
+            <div key={l._id} style={{ ...s.logRow, gridTemplateColumns: logCols }}>
               <div>
                 <p style={s.logUser}>{l.username}{l.forced && <span style={s.forcedBadge}>F</span>}</p>
                 <p style={s.logTime}>{fmtTime(l.createdAt)}</p>
               </div>
-              <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : s.gameBadgeDadu) }}>
-                {l.game === "slot" ? "Slot" : "Dadu"}
-              </span>
-              <span style={{ fontSize: 12, color: C.muted, textAlign: "right" }}>{fmt(l.bet)}</span>
+              {!isMobile && (
+                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : s.gameBadgeDadu) }}>
+                  {l.game === "slot" ? "Slot" : "Dadu"}
+                </span>
+              )}
+              {!isMobile && (
+                <span style={{ fontSize: 12, color: C.muted, textAlign: "right" }}>{fmt(l.bet)}</span>
+              )}
               <span style={{ textAlign: "center" }}>
                 {l.result === "jackpot" && <span style={s.badgeJackpot}>Jackpot</span>}
                 {l.result === "win"     && <span style={s.badgeAvail}>Menang</span>}
