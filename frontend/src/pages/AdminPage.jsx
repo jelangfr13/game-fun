@@ -925,7 +925,7 @@ function fmtTime(iso) {
 }
 
 const RESULT_FILTERS = ["semua", "win", "jackpot", "impas", "lose"];
-const GAME_FILTERS   = ["semua", "slot", "dadu"];
+const GAME_FILTERS   = ["semua", "slot", "dadu", "blackjack"];
 
 function LogsTab({ isMobile = false, cardPad = 24 }) {
   const [logs, setLogs]       = useState([]);
@@ -963,7 +963,6 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
   // Stats for current filter
   const totalWin  = filtered.filter(l => l.result === "win" || l.result === "jackpot").length;
   const totalLose = filtered.filter(l => l.result === "lose").length;
-  const netDelta  = filtered.reduce((sum, l) => sum + l.delta, 0);
 
   const logCols = isMobile ? "1fr 58px 64px" : "1fr 52px 70px 70px 72px";
 
@@ -989,36 +988,37 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
           <span style={{ color: C.lose, fontWeight: 700 }}>{totalLose}</span>
           <span style={{ fontSize: 11, color: C.muted }}>Kalah</span>
         </div>
-        <div style={s.logStatDiv} />
-        <div style={s.logStat}>
-          <span style={{ color: netDelta >= 0 ? C.win : C.lose, fontWeight: 700 }}>
-            {netDelta >= 0 ? "+" : ""}{fmt(netDelta)}
-          </span>
-          <span style={{ fontSize: 11, color: C.muted }}>Net Delta</span>
-        </div>
       </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {GAME_FILTERS.map(g => (
-          <button
-            key={g}
-            style={{ ...s.filterChip, ...(gameF === g ? s.filterChipOn : {}) }}
-            onClick={() => { setGameF(g); setPage(1); }}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={s.filterGroup}>
+          <span style={s.filterLabel}>Game</span>
+          <select
+            value={gameF}
+            onChange={e => { setGameF(e.target.value); setPage(1); }}
+            style={s.filterSelect}
           >
-            {g === "semua" ? "🎮 Semua" : g === "slot" ? "🎰 Slot" : "🎲 Dadu"}
-          </button>
-        ))}
-        <div style={{ width: 1, background: `${C.line}88`, height: 28, alignSelf: "center" }} />
-        {RESULT_FILTERS.map(r => (
-          <button
-            key={r}
-            style={{ ...s.filterChip, ...(resultF === r ? s.filterChipOn : {}) }}
-            onClick={() => { setResultF(r); setPage(1); }}
+            <option value="semua">🎮 Semua</option>
+            <option value="slot">🎰 Slot</option>
+            <option value="dadu">🎲 Dadu</option>
+            <option value="blackjack">🃏 Blackjack</option>
+          </select>
+        </div>
+        <div style={s.filterGroup}>
+          <span style={s.filterLabel}>Hasil</span>
+          <select
+            value={resultF}
+            onChange={e => { setResultF(e.target.value); setPage(1); }}
+            style={s.filterSelect}
           >
-            {r === "semua" ? "Semua" : r === "win" ? "Menang" : r === "jackpot" ? "Jackpot" : r === "impas" ? "Impas" : "Kalah"}
-          </button>
-        ))}
+            <option value="semua">Semua Hasil</option>
+            <option value="win">✅ Menang</option>
+            <option value="jackpot">⭐ Jackpot</option>
+            <option value="impas">➖ Impas</option>
+            <option value="lose">❌ Kalah</option>
+          </select>
+        </div>
       </div>
 
       {/* Search */}
@@ -1045,8 +1045,8 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
                 <p style={s.logTime}>{fmtTime(l.createdAt)}</p>
               </div>
               {!isMobile && (
-                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : s.gameBadgeDadu) }}>
-                  {l.game === "slot" ? "Slot" : "Dadu"}
+                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : l.game === "blackjack" ? s.gameBadgeBJ : s.gameBadgeDadu) }}>
+                  {l.game === "slot" ? "Slot" : l.game === "blackjack" ? "BJ" : "Dadu"}
                 </span>
               )}
               {!isMobile && (
@@ -1382,6 +1382,22 @@ const s = {
     color: C.muted, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
   },
   filterChipOn: { background: `${C.gold}22`, color: C.goldHi, borderColor: `${C.gold}55` },
+  filterGroup: {
+    flex: 1, display: "flex", flexDirection: "column", gap: 5,
+  },
+  filterLabel: {
+    fontSize: 11, fontWeight: 700, color: C.muted,
+    textTransform: "uppercase", letterSpacing: "0.06em", paddingLeft: 2,
+  },
+  filterSelect: {
+    width: "100%", background: C.panel2, border: `1px solid ${C.line}`,
+    borderRadius: 10, padding: "9px 32px 9px 12px", cursor: "pointer",
+    color: C.cream, fontSize: 13, fontWeight: 600,
+    outline: "none", appearance: "none", WebkitAppearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239C8E78' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+    boxSizing: "border-box",
+  },
   logRow: {
     display: "grid",
     gridTemplateColumns: "1fr 52px 70px 70px 72px",
@@ -1406,6 +1422,7 @@ const s = {
   },
   gameBadgeSlot: { background: "#3b82f622", color: "#60a5fa", border: "1px solid #3b82f644" },
   gameBadgeDadu: { background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b44" },
+  gameBadgeBJ:   { background: "#74C69022", color: "#74C690", border: "1px solid #74C69044" },
   badgeJackpot: {
     fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 999,
     background: "#a855f722", color: "#c084fc", border: "1px solid #a855f744",

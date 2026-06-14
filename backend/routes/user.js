@@ -153,7 +153,7 @@ router.get("/logs", requireAuth, async (req, res) => {
     const db = await getDb();
     const { game, limit = 50 } = req.query;
     const query = { userId: req.user.id };
-    if (game && ["slot", "dadu"].includes(game)) query.game = game;
+    if (game && ["slot", "dadu", "blackjack"].includes(game)) query.game = game;
     const logs = await db.collection("logs")
       .find(query)
       .sort({ createdAt: -1 })

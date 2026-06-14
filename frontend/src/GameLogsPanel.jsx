@@ -54,6 +54,19 @@ function LogDetail({ log }) {
       </span>
     );
   }
+  if (log.game === "blackjack") {
+    const { playerCards, dealerCards, playerValue, dealerValue } = log.details ?? {};
+    if (!playerCards) return null;
+    return (
+      <span style={P.detail}>
+        {playerCards.join(" ")}
+        <span style={{ color: "#F2CB72", fontWeight: 700 }}> {playerValue}</span>
+        <span style={{ opacity: 0.5 }}> vs </span>
+        {dealerCards.join(" ")}
+        <span style={{ opacity: 0.7 }}> {dealerValue}</span>
+      </span>
+    );
+  }
   return null;
 }
 

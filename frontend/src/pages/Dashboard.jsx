@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import DaduGanjilGenap from "../DaduGanjilGenap";
 import SlotMachine from "../SlotMachine";
+import Blackjack from "../Blackjack";
 import ProfilePage from "./ProfilePage";
 import TopUpPage from "./TopUpPage";
 import AdminPage from "./AdminPage";
@@ -30,8 +31,8 @@ const GAMES = [
     title: "Blackjack",
     description: "Kalahkan dealer tanpa melebihi 21",
     emoji: "🃏",
-    tag: "Segera hadir",
-    component: null,
+    tag: "Tersedia",
+    component: Blackjack,
   },
   {
     id: "roulette",
