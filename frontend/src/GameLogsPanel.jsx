@@ -75,7 +75,8 @@ const P = {
     background: "#D8A24A22", color: "#F2CB72", border: "1px solid #D8A24A44",
   },
   list: {
-    flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5,
+    flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden",
+    display: "flex", flexDirection: "column", gap: 5,
     paddingRight: 2,
   },
   row: {
@@ -120,7 +121,7 @@ export default function GameLogsPanel({ game, newEntry, mobile = false }) {
   }, [newEntry]);
 
   const wrapStyle = mobile
-    ? { ...P.wrap, width: "100%", position: "static", maxHeight: 320, flexShrink: 1 }
+    ? { ...P.wrap, width: "100%", boxSizing: "border-box", position: "static", maxHeight: 320, flexShrink: 1 }
     : P.wrap;
 
   return (

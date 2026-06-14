@@ -459,7 +459,7 @@ const s = {
   },
   layoutMobile: {
     display: "flex", flexDirection: "column", gap: 16,
-    width: "100%",
+    width: "100%", overflow: "hidden",
   },
   machine: { flex: "0 0 auto", width: "100%", maxWidth: 480 },
 
