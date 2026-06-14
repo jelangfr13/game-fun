@@ -5,7 +5,8 @@ import SlotMachine from "../SlotMachine";
 import ProfilePage from "./ProfilePage";
 import TopUpPage from "./TopUpPage";
 import AdminPage from "./AdminPage";
-import { fmt } from "../dadu/constants";
+import { fmt, fmtShort } from "../dadu/constants";
+import useIsMobile from "../useIsMobile";
 
 const GAMES = [
   {
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [coins, setCoins] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const isMobile = useIsMobile();
 
   const fetchCoins = useCallback(async () => {
     const token = localStorage.getItem("gf_token");
@@ -123,7 +125,7 @@ export default function Dashboard() {
       <div style={s.navRight}>
         <div style={s.coinBadge}>
           <span style={s.coinIcon}>🪙</span>
-          <span style={s.coinAmt}>{coins == null ? "—" : fmt(coins)}</span>
+          <span style={s.coinAmt}>{coins == null ? "—" : (isMobile ? fmtShort(coins) : fmt(coins))}</span>
         </div>
         <div style={s.navDivider} />
 

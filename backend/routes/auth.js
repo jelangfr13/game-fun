@@ -31,6 +31,7 @@ router.post("/register", async (req, res) => {
       username,
       password: hashed,
       coins: 10000,
+      newPlayerWins: 3,
       createdAt: new Date(),
     });
 

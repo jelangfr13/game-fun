@@ -115,7 +115,7 @@ const css = `
 .choice--on{ border-color:var(--gold); background:linear-gradient(180deg,#34291b,#241c12); box-shadow:0 0 0 1px var(--gold) inset; }
 .choice--on small{ color:var(--gold-hi); }
 
-.bets{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.bets{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .bet{
   background:var(--panel); border:1px solid var(--line); border-radius:12px;
   padding:13px 4px; cursor:pointer; color:var(--cream);

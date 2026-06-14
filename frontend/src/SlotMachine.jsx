@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BETS, fmt } from "./dadu/constants";
+import { BETS, fmt, fmtShort } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import { startSlotSpin, playReelStop, playWin, playLose } from "./sounds";
 import GameLogsPanel from "./GameLogsPanel";
@@ -20,26 +20,41 @@ const SYMBOLS = [
 const SYM = Object.fromEntries(SYMBOLS.map(s => [s.id, s]));
 const POOL = SYMBOLS.flatMap(s => Array(Math.round(s.weight * 4)).fill(s.id));
 
-// multiplier × bet = total returned to player
-const PAYOUTS = {
-  cherry:  { 3: 3,   2: 1 },
-  lemon:   { 3: 4 },
-  grapes:  { 3: 8 },
-  bell:    { 3: 15 },
-  star:    { 3: 30 },
-  diamond: { 3: 75 },
-  seven:   { 3: 200 },
+// ── OUTCOME SYSTEM ────────────────────────────────────────────────────────────
+
+// 3-of-a-kind with fixed probabilities (total 43%); remaining 57% is random
+const THREE_OF_A_KIND = [
+  { id: "seven3",   sym: "seven",   n: 3, multi: 10,   isJackpot: true, prob: 0.01 },
+  { id: "diamond3", sym: "diamond", n: 3, multi: 5,                     prob: 0.03 },
+  { id: "star3",    sym: "star",    n: 3, multi: 3,                     prob: 0.05 },
+  { id: "bell3",    sym: "bell",    n: 3, multi: 2.5,                   prob: 0.07 },
+  { id: "grapes3",  sym: "grapes",  n: 3, multi: 2,                     prob: 0.08 },
+  { id: "lemon3",   sym: "lemon",   n: 3, multi: 1.75,                  prob: 0.09 },
+  { id: "cherry3",  sym: "cherry",  n: 3, multi: 1.5,                   prob: 0.10 },
+];
+
+// 2-of-a-kind payouts (seven/diamond/star give bonus multiplier)
+const TWO_WIN = {
+  seven:   { id: "seven2",   sym: "seven",   n: 2, multi: 2    },
+  diamond: { id: "diamond2", sym: "diamond", n: 2, multi: 1.5  },
+  star:    { id: "star2",    sym: "star",    n: 2, multi: 1.25 },
 };
+const DRAW = { id: "draw", sym: null, n: 2, multi: 1 };
+const LOSE = { id: "lose", sym: null, n: 0, multi: 0 };
 
 const PAYOUT_DISPLAY = [
-  { sym: "seven",   multi: 200, label: "JACKPOT" },
-  { sym: "diamond", multi: 75  },
-  { sym: "star",    multi: 30  },
-  { sym: "bell",    multi: 15  },
-  { sym: "grapes",  multi: 8   },
-  { sym: "lemon",   multi: 4   },
-  { sym: "cherry",  multi: 3   },
-  { sym: "cherry",  multi: 1, count: 2, note: "×2" },
+  { sym: "seven",   n: 3, multi: 10,   label: "JACKPOT" },
+  { sym: "diamond", n: 3, multi: 5    },
+  { sym: "star",    n: 3, multi: 3    },
+  { sym: "bell",    n: 3, multi: 2.5  },
+  { sym: "grapes",  n: 3, multi: 2    },
+  { sym: "lemon",   n: 3, multi: 1.75 },
+  { sym: "cherry",  n: 3, multi: 1.5  },
+  null,
+  { sym: "seven",   n: 2, multi: 2    },
+  { sym: "diamond", n: 2, multi: 1.5  },
+  { sym: "star",    n: 2, multi: 1.25 },
+  { n: 2, multi: 1, label: "Impas"   },
 ];
 
 const STOP_TIMES = [1100, 1650, 2200];
@@ -48,34 +63,41 @@ function randSym() {
   return POOL[Math.floor(Math.random() * POOL.length)];
 }
 
-// reels[col][row], 3 cols × 3 rows
+// reels[col][row], 3 cols × 3 rows (initial / spin animation)
 function makeReels() {
   return Array.from({ length: 3 }, () => [randSym(), randSym(), randSym()]);
 }
 
-// Reels whose payline has no winning combination
-function makeLoseReels() {
-  const FALLBACK = ["cherry", "lemon", "grapes"]; // guaranteed no match
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const r = makeReels();
-    if (calcWin([r[0][1], r[1][1], r[2][1]], 1).multi === 0) return r;
+// Compute outcome from 3 payline symbols (used for the random 57%)
+function computeOutcome(syms) {
+  const [a, b, c] = syms;
+  if (a === b && b === c) {
+    return THREE_OF_A_KIND.find(o => o.sym === a) ?? { id: a + "3", sym: a, n: 3, multi: 1.5 };
   }
-  return [
-    [randSym(), FALLBACK[0], randSym()],
-    [randSym(), FALLBACK[1], randSym()],
-    [randSym(), FALLBACK[2], randSym()],
-  ];
+  const winSym = a === b ? a : b === c ? b : a === c ? a : null;
+  if (winSym) return TWO_WIN[winSym] ?? { ...DRAW, sym: winSym };
+  return LOSE;
 }
 
-function calcWin(payline, bet) {
-  const counts = {};
-  payline.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
-  let best = { sym: null, count: 0, multi: 0, win: 0 };
-  for (const [sym, count] of Object.entries(counts)) {
-    const multi = PAYOUTS[sym]?.[count] ?? 0;
-    if (multi > best.multi) best = { sym, count, multi, win: multi * bet };
+// Pick spin: 43% fixed 3-of-a-kind by prob table, 57% truly random
+function pickSpin() {
+  const r = Math.random();
+  let cum = 0;
+  for (const o of THREE_OF_A_KIND) {
+    cum += o.prob;
+    if (r < cum) return { syms: [o.sym, o.sym, o.sym], outcome: o };
   }
-  return best;
+  const syms = [randSym(), randSym(), randSym()];
+  return { syms, outcome: computeOutcome(syms) };
+}
+
+function getWinPositions(paylineSyms) {
+  const counts = {};
+  paylineSyms.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
+  const max = Math.max(...Object.values(counts));
+  if (max < 2) return [];
+  const winSym = Object.keys(counts).find(s => counts[s] === max);
+  return paylineSyms.reduce((acc, s, i) => { if (s === winSym) acc.push(i); return acc; }, []);
 }
 
 // ── COMPONENT ─────────────────────────────────────────────────────────────────
@@ -127,6 +149,7 @@ export default function SlotMachine({ onTopUp }) {
     let forceJackpot = false;
     let forceWin     = false;
     let forceLose    = false;
+    let isNewPlayer  = false;
     try {
       const token = localStorage.getItem("gf_token");
       const [jRes, wRes, lRes] = await Promise.all([
@@ -135,40 +158,46 @@ export default function SlotMachine({ onTopUp }) {
         fetch("/api/user/claim-lose",    { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (jRes.ok) forceJackpot = (await jRes.json()).jackpot;
-      if (wRes.ok) forceWin     = (await wRes.json()).win;
+      if (wRes.ok) { const w = await wRes.json(); forceWin = w.win; isNewPlayer = !!w.newPlayer; }
       if (lRes.ok) forceLose    = (await lRes.json()).lose;
     } catch (e) {}
 
-    // Build final reels — jackpot > forced win > forced lose > random
-    let finalReels;
-    if (forceJackpot) {
-      finalReels = [
-        [randSym(), "seven", randSym()],
-        [randSym(), "seven", randSym()],
-        [randSym(), "seven", randSym()],
-      ];
-    } else if (forceWin) {
-      finalReels = [
-        [randSym(), "bell", randSym()],
-        [randSym(), "bell", randSym()],
-        [randSym(), "bell", randSym()],
-      ];
-    } else if (forceLose) {
-      finalReels = makeLoseReels();
-    } else {
-      finalReels = makeReels();
-    }
-    const payline = [finalReels[0][1], finalReels[1][1], finalReels[2][1]];
-    const result  = calcWin(payline, bet);
-    spinBalance.current = balance;
+    const RESTRICTED_SYMS = ["seven", "diamond", "star"];
 
+    // Pick outcome — jackpot > forced win > forced lose > random
+    let paylineSyms, picked;
+    if (forceJackpot) {
+      picked      = THREE_OF_A_KIND.find(o => o.id === "seven3");
+      paylineSyms = [picked.sym, picked.sym, picked.sym];
+    } else if (forceWin) {
+      const pool = isNewPlayer
+        ? THREE_OF_A_KIND.filter(o => !RESTRICTED_SYMS.includes(o.sym))
+        : THREE_OF_A_KIND.filter(o => !o.isJackpot);
+      picked      = pool[Math.floor(Math.random() * pool.length)];
+      paylineSyms = [picked.sym, picked.sym, picked.sym];
+    } else if (forceLose) {
+      picked      = LOSE;
+      const shuffled = [...POOL].sort(() => Math.random() - 0.5);
+      paylineSyms = [shuffled[0], shuffled[1], shuffled[2]];
+    } else {
+      const result = pickSpin();
+      paylineSyms  = result.syms;
+      picked       = result.outcome;
+    }
+
+    const finalReels = paylineSyms.map(mid => [randSym(), mid, randSym()]);
+    const payout       = Math.round(bet * picked.multi);
+    const delta        = payout - bet;
+    const winPositions = getWinPositions(paylineSyms);
+    const spinResult   = { ...picked, paylineSyms, winPositions, payout, delta };
+
+    spinBalance.current = balance;
     setOutcome(null);
     setSpinning(true);
     setStopped([false, false, false]);
-    setBalance(balance - bet); // optimistic UI only — DB saved once at spin end
+    setBalance(balance - bet);
     stopSpin.current = startSlotSpin();
 
-    // start cycling each reel
     intv.current.forEach(clearInterval);
     tmrs.current.forEach(clearTimeout);
     tmrs.current = [];
@@ -192,7 +221,6 @@ export default function SlotMachine({ onTopUp }) {
           return next;
         });
         setStopped(prev => { const n = [...prev]; n[c] = true; return n; });
-
         playReelStop();
 
         if (c === 2) {
@@ -200,33 +228,26 @@ export default function SlotMachine({ onTopUp }) {
           stopSpin.current = null;
           spinLock.current = false;
           setSpinning(false);
-          setOutcome(result);
-          const base = spinBalance.current;
-          let finalBalance, net;
-          if (result.win > 0) {
-            finalBalance = base - bet + result.win;
-            net = result.win - bet;
-            updateBalance(finalBalance);
-            if (result.multi >= 100) {
-              flash("win", `🎰 JACKPOT! +${fmt(net)} koin`); playWin(true);
-            } else if (net > 0) {
-              flash("win", `Menang! +${fmt(net)} koin`); playWin(false);
-            } else {
-              flash("warn", `Impas · ${fmt(result.win)} koin kembali`);
-            }
+          setOutcome(spinResult);
+
+          const base         = spinBalance.current;
+          const finalBalance = base - bet + payout;
+          updateBalance(finalBalance);
+
+          if (spinResult.isJackpot) {
+            flash("win", `🎰 JACKPOT! +${fmt(delta)} koin`); playWin(true);
+          } else if (delta > 0) {
+            flash("win", `Menang! +${fmt(delta)} koin`); playWin(false);
+          } else if (delta === 0) {
+            flash("warn", `Impas · ${fmt(payout)} koin kembali`);
           } else {
-            finalBalance = base - bet;
-            net = -bet;
-            updateBalance(finalBalance);
-            flash("lose", `-${fmt(bet)} koin`);
-            playLose();
+            flash("lose", `-${fmt(bet)} koin`); playLose();
           }
-          // Optimistic panel update + fire-and-forget log
-          const isJackpot = result.sym === "seven" && result.count === 3;
-          const logResult = isJackpot ? "jackpot" : result.win > 0 ? (net === 0 ? "impas" : "win") : "lose";
+
+          const logResult = spinResult.isJackpot ? "jackpot" : delta > 0 ? "win" : delta === 0 ? "impas" : "lose";
           const logEntry = {
-            game: "slot", bet, result: logResult, delta: net,
-            details: { payline, symbol: result.sym ?? null, multiplier: result.multi ?? 0 },
+            game: "slot", bet, result: logResult, delta,
+            details: { payline: paylineSyms, symbol: spinResult.sym ?? null, multiplier: spinResult.multi },
             forced: forceJackpot || forceWin || forceLose,
             createdAt: new Date().toISOString(),
           };
@@ -245,12 +266,7 @@ export default function SlotMachine({ onTopUp }) {
   const loading  = balance == null;
   const canSpin  = !spinning && !loading && balance >= bet;
 
-  // payline symbols for win highlight
-  const payline      = [reels[0][1], reels[1][1], reels[2][1]];
-  const winSym       = outcome?.sym ?? null;
-  const winningCols  = winSym
-    ? payline.reduce((acc, s, i) => { if (s === winSym) acc.push(i); return acc; }, [])
-    : [];
+  const winningCols = outcome?.winPositions ?? [];
 
   return (
     <div style={{ ...s.root, ...(isMobile ? { padding: "12px 10px 40px" } : {}) }}>
@@ -262,13 +278,10 @@ export default function SlotMachine({ onTopUp }) {
           <div style={s.payoutsPanel}>
             <p style={s.payoutsPanelTitle}>Tabel Bayar</p>
             <div style={s.payoutGrid}>
-              {PAYOUT_DISPLAY.map((p, i) => (
+              {PAYOUT_DISPLAY.filter(p => p !== null && p.n === 3).map((p, i) => (
                 <div key={i} style={s.payoutRow}>
                   <span style={s.payoutSyms}>
-                    {p.note
-                      ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                      : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                    }
+                    {`${SYM[p.sym].emoji} ${SYM[p.sym].emoji} ${SYM[p.sym].emoji}`}
                   </span>
                   <span style={s.payoutMult}>
                     {p.multi}×
@@ -291,7 +304,7 @@ export default function SlotMachine({ onTopUp }) {
           </div>
           <button style={s.wallet} onClick={() => onTopUp?.()} disabled={loading}>
             <span style={s.walletLabel}>Saldo</span>
-            <span style={s.walletAmt}>{loading ? "—" : fmt(balance)}</span>
+            <span style={s.walletAmt}>{loading ? "—" : (isMobile ? fmtShort(balance) : fmt(balance))}</span>
             <span style={s.walletUnit}>koin</span>
           </button>
         </header>
@@ -330,18 +343,28 @@ export default function SlotMachine({ onTopUp }) {
             {spinning ? (
               <span style={s.verdictSpin}>Memutar…</span>
             ) : outcome ? (
-              outcome.win > 0 ? (
+              outcome.multi === 0 ? (
+                <span style={s.verdictLose}>Coba lagi</span>
+              ) : outcome.multi === 1 ? (
+                <div style={s.verdictWin}>
+                  <span style={s.verdictSymbol}>
+                    {SYM[outcome.paylineSyms?.[outcome.winPositions?.[0]]]?.emoji}
+                  </span>
+                  <div style={s.verdictText}>
+                    <span style={s.verdictTitle}>2 Sejenis · Impas</span>
+                    <span style={s.verdictSub}>{fmt(outcome.payout)} koin kembali</span>
+                  </div>
+                </div>
+              ) : (
                 <div style={s.verdictWin}>
                   <span style={s.verdictSymbol}>{SYM[outcome.sym]?.emoji}</span>
                   <div style={s.verdictText}>
                     <span style={s.verdictTitle}>
-                      {outcome.count === 3 ? "3 Sejenis" : "2 Cherry"} · {outcome.multi}×
+                      {outcome.n === 3 ? "3 Sejenis" : "2 Sejenis"} · {outcome.multi}×
                     </span>
-                    <span style={s.verdictSub}>+{fmt(outcome.win - bet)} koin</span>
+                    <span style={s.verdictSub}>+{fmt(outcome.delta)} koin</span>
                   </div>
                 </div>
-              ) : (
-                <span style={s.verdictLose}>Coba lagi</span>
               )
             ) : (
               <span style={s.verdictIdle}>Tekan putar untuk mulai</span>
@@ -378,7 +401,7 @@ export default function SlotMachine({ onTopUp }) {
           >
             <span>💰 ALL IN</span>
             {!loading && balance > 0 && (
-              <span style={s.allInAmt}>{fmt(balance)} koin</span>
+              <span style={s.allInAmt}>{isMobile ? fmtShort(balance) : fmt(balance)} koin</span>
             )}
           </button>
         </div>
@@ -404,13 +427,10 @@ export default function SlotMachine({ onTopUp }) {
             </button>
             {showPayouts && (
               <div style={s.payoutGrid}>
-                {PAYOUT_DISPLAY.map((p, i) => (
+                {PAYOUT_DISPLAY.filter(p => p !== null && p.n === 3).map((p, i) => (
                   <div key={i} style={s.payoutRow}>
                     <span style={s.payoutSyms}>
-                      {p.note
-                        ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                        : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                      }
+                      {`${SYM[p.sym].emoji} ${SYM[p.sym].emoji} ${SYM[p.sym].emoji}`}
                     </span>
                     <span style={s.payoutMult}>
                       {p.multi}×
@@ -561,7 +581,7 @@ const s = {
   // BET
   section: { marginBottom: 16 },
   sectionLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: "1.4px", color: C.muted, marginBottom: 9 },
-  bets: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 },
+  bets: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   betBtn: {
     background: C.panel, border: `1px solid ${C.line}`,
     borderRadius: 12, padding: "12px 4px",
@@ -627,6 +647,7 @@ const s = {
   payoutSyms: { fontSize: 16, letterSpacing: "2px" },
   payoutMult: { fontFamily: "'Space Mono', monospace", fontWeight: 700, fontSize: 13, color: C.goldHi },
   payoutLabel: { fontFamily: "'DM Sans', sans-serif", fontWeight: 400, fontSize: 11, color: C.muted },
+  payoutDivider: { height: 1, background: C.line, margin: "4px 0" },
 
   // TOAST
   toast: {

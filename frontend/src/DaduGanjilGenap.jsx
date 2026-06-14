@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BETS, fmt } from "./dadu/constants";
+import { BETS, fmt, fmtShort } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import Die from "./dadu/Die";
 import css from "./dadu/styles";
@@ -147,7 +147,7 @@ export default function DaduGanjilGenap({ onTopUp }) {
           </div>
           <button className="wallet" onClick={() => onTopUp?.()} disabled={loading}>
             <span className="wallet__label">Saldo</span>
-            <span className="wallet__amt">{loading ? "—" : fmt(balance)}</span>
+            <span className="wallet__amt">{loading ? "—" : (isMobile ? fmtShort(balance) : fmt(balance))}</span>
             <span className="wallet__coin">koin</span>
           </button>
         </header>
@@ -222,7 +222,7 @@ export default function DaduGanjilGenap({ onTopUp }) {
           >
             💰 ALL IN
             {!loading && balance > 0 && (
-              <span style={allInStyle.amount}>{fmt(balance)} koin</span>
+              <span style={allInStyle.amount}>{isMobile ? fmtShort(balance) : fmt(balance)} koin</span>
             )}
           </button>
         </section>

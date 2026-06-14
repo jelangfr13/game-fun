@@ -92,6 +92,15 @@ router.post("/redeem", requireAuth, async (req, res) => {
 router.post("/claim-win", requireAuth, async (req, res) => {
   try {
     const db = await getDb();
+
+    // New-player bonus wins take priority (stored on user document)
+    const npUser = await db.collection("users").findOneAndUpdate(
+      { _id: new ObjectId(req.user.id), newPlayerWins: { $gt: 0 } },
+      { $inc: { newPlayerWins: -1 } },
+      { returnDocument: "after" }
+    );
+    if (npUser) return res.json({ win: true, newPlayer: true });
+
     // If count > 1, decrement and keep the document
     const dec = await db.collection("wins").findOneAndUpdate(
       { userId: req.user.id, count: { $gt: 1 } },
