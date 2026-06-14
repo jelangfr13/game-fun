@@ -46,10 +46,30 @@ export default function AdminPage() {
 
 // ── CODES TAB ─────────────────────────────────────────────────────────────────
 
+const USE_LIMITS = ["1", "5", "10", "25"];
+
+function codeStatus(c) {
+  if (c.useCount !== undefined) {
+    const full = c.maxUses !== null && c.useCount >= c.maxUses;
+    if (full) return "habis";
+    if (c.useCount > 0) return "partial";
+    return "avail";
+  }
+  return c.usedBy ? "habis" : "avail";
+}
+
+function codeUses(c) {
+  if (c.useCount !== undefined)
+    return `${c.useCount} / ${c.maxUses === null ? "♾" : c.maxUses}`;
+  return c.usedBy ? "1 / 1" : "0 / 1";
+}
+
 function CodesTab() {
   const [amount, setAmount] = useState(10000);
   const [custom, setCustom] = useState("");
   const [useCustom, setUseCustom] = useState(false);
+  const [maxUsesMode, setMaxUsesMode] = useState("1");
+  const [customUses, setCustomUses] = useState("");
   const [generated, setGenerated] = useState(null);
   const [codes, setCodes] = useState([]);
   const [generating, setGenerating] = useState(false);
@@ -57,6 +77,11 @@ function CodesTab() {
   const [error, setError] = useState(null);
 
   const finalAmount = useCustom ? (parseInt(custom, 10) || 0) : amount;
+  const finalMaxUses = maxUsesMode === "limitless"
+    ? null
+    : maxUsesMode === "custom"
+      ? (parseInt(customUses, 10) || 1)
+      : parseInt(maxUsesMode, 10);
 
   const fetchCodes = useCallback(async () => {
     try {
@@ -69,13 +94,16 @@ function CodesTab() {
 
   const generate = async () => {
     if (finalAmount < 1000) { setError("Nominal minimal 1.000."); return; }
+    if (maxUsesMode === "custom" && (!customUses || parseInt(customUses, 10) < 1)) {
+      setError("Jumlah penggunaan minimal 1."); return;
+    }
     setError(null);
     setGenerating(true);
     try {
       const res = await fetch("/api/admin/codes", {
         method: "POST",
         headers: { ...authHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: finalAmount }),
+        body: JSON.stringify({ amount: finalAmount, maxUses: finalMaxUses }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -134,6 +162,47 @@ function CodesTab() {
           </>
         )}
 
+        <p style={{ ...s.label, marginTop: 4 }}>Batas penggunaan kode</p>
+        <div style={s.grid}>
+          {USE_LIMITS.map((n) => (
+            <button
+              key={n}
+              style={{ ...s.chip, ...(maxUsesMode === n ? s.chipActive : {}) }}
+              onClick={() => setMaxUsesMode(n)}
+            >
+              {n}× pakai
+            </button>
+          ))}
+          <button
+            style={{ ...s.chip, ...(maxUsesMode === "limitless" ? s.chipActive : {}) }}
+            onClick={() => setMaxUsesMode("limitless")}
+          >
+            ♾ Limitless
+          </button>
+          <button
+            style={{ ...s.chip, ...(maxUsesMode === "custom" ? s.chipActive : {}) }}
+            onClick={() => setMaxUsesMode("custom")}
+          >
+            ✏️ Custom
+          </button>
+        </div>
+
+        {maxUsesMode === "custom" && (
+          <>
+            <p style={{ ...s.label, marginTop: 4 }}>Jumlah penggunaan custom</p>
+            <input
+              style={s.input}
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Min. 1"
+              value={customUses}
+              onChange={(e) => setCustomUses(e.target.value)}
+              autoFocus
+            />
+          </>
+        )}
+
         {error && <p style={s.errorMsg}>✕ {error}</p>}
 
         <button
@@ -148,7 +217,11 @@ function CodesTab() {
           <div style={s.resultBox}>
             <div style={s.resultTop}>
               <span style={s.smallLabel}>Kode berhasil dibuat</span>
-              <span style={s.resultAmount}>🪙 {fmt(generated.amount)} koin</span>
+              <span style={s.resultAmount}>
+                🪙 {fmt(generated.amount)} koin
+                {" · "}
+                {generated.maxUses === null ? "♾ limitless" : `${generated.maxUses}× pakai`}
+              </span>
             </div>
             <div style={s.codeRow}>
               <span style={s.codeText}>{generated.code}</span>
@@ -170,21 +243,27 @@ function CodesTab() {
           <p style={s.empty}>Belum ada kode.</p>
         ) : (
           <div style={s.table}>
-            <div style={{ ...s.tableRow, ...s.tableHead }}>
+            <div style={{ ...s.tableRow, ...s.tableHead, ...s.tableRowWide }}>
               <span>Kode</span>
               <span>Nominal</span>
+              <span>Penggunaan</span>
               <span>Status</span>
             </div>
-            {codes.map((c) => (
-              <div key={c._id} style={s.tableRow}>
-                <code style={s.codeCell}>{c.code}</code>
-                <span style={{ fontSize: 13, color: C.cream }}>🪙 {fmt(c.amount)}</span>
-                <span>{c.usedBy
-                  ? <span style={s.badgeUsed}>Digunakan</span>
-                  : <span style={s.badgeAvail}>Tersedia</span>}
-                </span>
-              </div>
-            ))}
+            {codes.map((c) => {
+              const st = codeStatus(c);
+              return (
+                <div key={c._id} style={{ ...s.tableRow, ...s.tableRowWide }}>
+                  <code style={s.codeCell}>{c.code}</code>
+                  <span style={{ fontSize: 13, color: C.cream }}>🪙 {fmt(c.amount)}</span>
+                  <span style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>{codeUses(c)}</span>
+                  <span>
+                    {st === "habis"   && <span style={s.badgeUsed}>Habis</span>}
+                    {st === "partial" && <span style={s.badgePart}>Sebagian</span>}
+                    {st === "avail"   && <span style={s.badgeAvail}>Tersedia</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -700,6 +779,9 @@ const s = {
     padding: "10px 4px", borderBottom: `1px solid ${C.line}22`,
     alignItems: "center", gap: 8,
   },
+  tableRowWide: {
+    gridTemplateColumns: "1fr 110px 90px 90px",
+  },
   codeCell: {
     fontFamily: "monospace", fontSize: 13, fontWeight: 700,
     color: C.goldHi, letterSpacing: "1.5px",
@@ -714,6 +796,10 @@ const s = {
   badgeAvail: {
     fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
     background: "#74C69020", color: C.win, border: `1px solid ${C.win}44`,
+  },
+  badgePart: {
+    fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+    background: "#E8C26A20", color: "#E8C26A", border: "1px solid #E8C26A44",
   },
   empty: { fontSize: 13, color: C.muted, textAlign: "center", padding: "20px 0", margin: 0 },
 

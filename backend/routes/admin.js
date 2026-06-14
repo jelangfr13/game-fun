@@ -11,20 +11,26 @@ const router = Router();
 // ── CODES ────────────────────────────────────────────────────────────────────
 
 router.post("/codes", requireAuth, requireAdmin, async (req, res) => {
-  const { amount } = req.body ?? {};
+  const { amount, maxUses } = req.body ?? {};
   if (typeof amount !== "number" || !isFinite(amount) || amount < 1000)
     return res.status(400).json({ error: "Amount minimal 1.000." });
+  if (maxUses !== null && maxUses !== undefined) {
+    if (!Number.isInteger(maxUses) || maxUses < 1)
+      return res.status(400).json({ error: "maxUses harus bilangan bulat ≥ 1 atau null (limitless)." });
+  }
   try {
     const db = await getDb();
     const code = "GF-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+    const finalMaxUses = (maxUses === null || maxUses === undefined) ? null : maxUses;
     await db.collection("codes").insertOne({
       code,
       amount: Math.round(amount),
-      usedBy: null,
-      usedAt: null,
+      maxUses: finalMaxUses,   // null = limitless, number = max redemptions
+      useCount: 0,
+      uses: [],                // [{ userId, usedAt }]
       createdAt: new Date(),
     });
-    res.json({ code, amount: Math.round(amount) });
+    res.json({ code, amount: Math.round(amount), maxUses: finalMaxUses });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Server error." });

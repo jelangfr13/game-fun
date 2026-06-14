@@ -42,13 +42,38 @@ router.post("/redeem", requireAuth, async (req, res) => {
   if (!code) return res.status(400).json({ error: "Kode wajib diisi." });
   try {
     const db = await getDb();
-    // Atomic: mark used only if still unused
-    const result = await db.collection("codes").findOneAndUpdate(
-      { code: code.trim().toUpperCase(), usedBy: null },
-      { $set: { usedBy: req.user.id, usedAt: new Date() } },
+    const trimmedCode = code.trim().toUpperCase();
+
+    // New format: multi-use code (has useCount field)
+    let result = await db.collection("codes").findOneAndUpdate(
+      {
+        code: trimmedCode,
+        useCount: { $exists: true },
+        "uses.userId": { $ne: req.user.id },   // user hasn't already redeemed
+        $or: [
+          { maxUses: null },                    // limitless
+          { $expr: { $lt: ["$useCount", "$maxUses"] } },
+        ],
+      },
+      {
+        $inc: { useCount: 1 },
+        $push: { uses: { userId: req.user.id, usedAt: new Date() } },
+      },
       { returnDocument: "before" }
     );
-    if (!result) return res.status(400).json({ error: "Kode tidak valid atau sudah digunakan." });
+
+    // Legacy format: single-use code (usedBy: null)
+    if (!result) {
+      result = await db.collection("codes").findOneAndUpdate(
+        { code: trimmedCode, usedBy: null },
+        { $set: { usedBy: req.user.id, usedAt: new Date() } },
+        { returnDocument: "before" }
+      );
+    }
+
+    if (!result)
+      return res.status(400).json({ error: "Kode tidak valid, sudah habis, atau sudah pernah kamu gunakan." });
+
     const amount = result.amount;
     const user = await db.collection("users").findOne({ _id: new ObjectId(req.user.id) });
     const newCoins = (user.coins ?? STARTING_BALANCE) + amount;
