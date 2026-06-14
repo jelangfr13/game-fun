@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { BETS, fmt } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import { startSlotSpin, playReelStop, playWin, playLose } from "./sounds";
+import GameLogsPanel from "./GameLogsPanel";
 
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,20 @@ function makeReels() {
   return Array.from({ length: 3 }, () => [randSym(), randSym(), randSym()]);
 }
 
+// Reels whose payline has no winning combination
+function makeLoseReels() {
+  const FALLBACK = ["cherry", "lemon", "grapes"]; // guaranteed no match
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const r = makeReels();
+    if (calcWin([r[0][1], r[1][1], r[2][1]], 1).multi === 0) return r;
+  }
+  return [
+    [randSym(), FALLBACK[0], randSym()],
+    [randSym(), FALLBACK[1], randSym()],
+    [randSym(), FALLBACK[2], randSym()],
+  ];
+}
+
 function calcWin(payline, bet) {
   const counts = {};
   payline.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
@@ -72,7 +87,7 @@ export default function SlotMachine({ onTopUp }) {
   const [spinning, setSpinning]     = useState(false);
   const [outcome, setOutcome]       = useState(null);
   const [toast, setToast]           = useState(null);
-  const [showPayouts, setShowPayouts] = useState(false);
+  const [latestLog, setLatestLog]   = useState(null);
 
   const intv        = useRef([null, null, null]);
   const tmrs        = useRef([]);
@@ -105,20 +120,23 @@ export default function SlotMachine({ onTopUp }) {
     if (spinLock.current || spinning || balance == null || balance < bet) return;
     spinLock.current = true;
 
-    // Check pending jackpot, then forced win (jackpot takes priority)
+    // Check pending jackpot, forced win, forced lose (jackpot > win > lose > random)
     let forceJackpot = false;
     let forceWin     = false;
+    let forceLose    = false;
     try {
       const token = localStorage.getItem("gf_token");
-      const [jRes, wRes] = await Promise.all([
+      const [jRes, wRes, lRes] = await Promise.all([
         fetch("/api/user/claim-jackpot", { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
         fetch("/api/user/claim-win",     { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/user/claim-lose",    { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (jRes.ok) forceJackpot = (await jRes.json()).jackpot;
       if (wRes.ok) forceWin     = (await wRes.json()).win;
+      if (lRes.ok) forceLose    = (await lRes.json()).lose;
     } catch (e) {}
 
-    // Build final reels — jackpot > forced win > random
+    // Build final reels — jackpot > forced win > forced lose > random
     let finalReels;
     if (forceJackpot) {
       finalReels = [
@@ -127,12 +145,13 @@ export default function SlotMachine({ onTopUp }) {
         [randSym(), "seven", randSym()],
       ];
     } else if (forceWin) {
-      // Force bell×3 on payline (15× payout — clear win, not jackpot)
       finalReels = [
         [randSym(), "bell", randSym()],
         [randSym(), "bell", randSym()],
         [randSym(), "bell", randSym()],
       ];
+    } else if (forceLose) {
+      finalReels = makeLoseReels();
     } else {
       finalReels = makeReels();
     }
@@ -180,10 +199,11 @@ export default function SlotMachine({ onTopUp }) {
           setSpinning(false);
           setOutcome(result);
           const base = spinBalance.current;
+          let finalBalance, net;
           if (result.win > 0) {
-            const finalBalance = base - bet + result.win;
-            updateBalance(finalBalance); // single DB write at spin end
-            const net = result.win - bet;
+            finalBalance = base - bet + result.win;
+            net = result.win - bet;
+            updateBalance(finalBalance);
             if (result.multi >= 100) {
               flash("win", `🎰 JACKPOT! +${fmt(net)} koin`); playWin(true);
             } else if (net > 0) {
@@ -192,10 +212,27 @@ export default function SlotMachine({ onTopUp }) {
               flash("warn", `Impas · ${fmt(result.win)} koin kembali`);
             }
           } else {
-            updateBalance(base - bet); // single DB write at spin end
+            finalBalance = base - bet;
+            net = -bet;
+            updateBalance(finalBalance);
             flash("lose", `-${fmt(bet)} koin`);
             playLose();
           }
+          // Optimistic panel update + fire-and-forget log
+          const isJackpot = result.sym === "seven" && result.count === 3;
+          const logResult = isJackpot ? "jackpot" : result.win > 0 ? (net === 0 ? "impas" : "win") : "lose";
+          const logEntry = {
+            game: "slot", bet, result: logResult, delta: net,
+            details: { payline, symbol: result.sym ?? null, multiplier: result.multi ?? 0 },
+            forced: forceJackpot || forceWin || forceLose,
+            createdAt: new Date().toISOString(),
+          };
+          setLatestLog(logEntry);
+          fetch("/api/user/log", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${localStorage.getItem("gf_token")}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ ...logEntry, balanceBefore: base, balanceAfter: finalBalance }),
+          }).catch(() => {});
         }
       }, delay);
       tmrs.current.push(t);
@@ -215,7 +252,31 @@ export default function SlotMachine({ onTopUp }) {
   return (
     <div style={s.root}>
       <style>{globalCss}</style>
-      <div style={s.machine}>
+      <div style={s.layout}>
+
+        {/* LEFT: PAYOUT TABLE */}
+        <div style={s.payoutsPanel}>
+          <p style={s.payoutsPanelTitle}>Tabel Bayar</p>
+          <div style={s.payoutGrid}>
+            {PAYOUT_DISPLAY.map((p, i) => (
+              <div key={i} style={s.payoutRow}>
+                <span style={s.payoutSyms}>
+                  {p.note
+                    ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                    : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
+                  }
+                </span>
+                <span style={s.payoutMult}>
+                  {p.multi}×
+                  {p.label && <span style={s.payoutLabel}> {p.label}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CENTER: MACHINE */}
+        <div style={s.machine}>
 
         {/* HEADER */}
         <header style={s.header}>
@@ -329,32 +390,12 @@ export default function SlotMachine({ onTopUp }) {
           <p style={s.broke}>Saldo habis. Klik tombol Saldo untuk top-up.</p>
         )}
 
-        {/* PAYOUT TABLE */}
-        <div style={s.payoutSection}>
-          <button style={s.payoutToggle} onClick={() => setShowPayouts(p => !p)}>
-            {showPayouts ? "▲" : "▼"} Tabel Pembayaran
-          </button>
-          {showPayouts && (
-            <div style={s.payoutGrid}>
-              {PAYOUT_DISPLAY.map((p, i) => (
-                <div key={i} style={s.payoutRow}>
-                  <span style={s.payoutSyms}>
-                    {p.note
-                      ? <>{SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                      : <>{SYM[p.sym].emoji} {SYM[p.sym].emoji} {SYM[p.sym].emoji}</>
-                    }
-                  </span>
-                  <span style={s.payoutMult}>
-                    {p.multi}×
-                    {p.label && <span style={s.payoutLabel}> {p.label}</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        </div>{/* end machine */}
 
-      </div>
+        {/* RIGHT: LOGS */}
+        <GameLogsPanel game="slot" newEntry={latestLog} />
+
+      </div>{/* end layout */}
 
       {toast && <div style={{ ...s.toast, ...s[`toast_${toast.type}`] }}>{toast.text}</div>}
     </div>
@@ -379,7 +420,25 @@ const s = {
     color: C.cream, display: "flex", justifyContent: "center",
     alignItems: "flex-start", padding: "32px 24px 48px", boxSizing: "border-box",
   },
-  machine: { width: "100%", maxWidth: 480 },
+  layout: {
+    display: "flex", gap: 24, alignItems: "flex-start",
+    width: "100%", maxWidth: 1040,
+  },
+  machine: { flex: "0 0 auto", width: "100%", maxWidth: 480 },
+
+  // PAYOUTS PANEL (left)
+  payoutsPanel: {
+    width: 200, flexShrink: 0,
+    background: C.panel, border: `1px solid ${C.line}`,
+    borderRadius: 20, padding: 14,
+    display: "flex", flexDirection: "column", gap: 0,
+    position: "sticky", top: 32,
+  },
+  payoutsPanelTitle: {
+    fontFamily: "'Fraunces', serif", fontWeight: 600,
+    fontSize: 14, color: C.cream, margin: "0 0 10px",
+    paddingBottom: 10, borderBottom: `1px solid ${C.line}`,
+  },
 
   // HEADER
   header: {

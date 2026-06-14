@@ -10,7 +10,7 @@ function authHeader() {
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const [tab, setTab] = useState("codes"); // "codes" | "users" | "jackpot"
+  const [tab, setTab] = useState("codes");
 
   return (
     <div style={s.root}>
@@ -20,7 +20,7 @@ export default function AdminPage() {
             style={{ ...s.tab, ...(tab === "codes" ? s.tabActive : {}) }}
             onClick={() => setTab("codes")}
           >
-            🎟️ Code Generator
+            🎟️ Code
           </button>
           <button
             style={{ ...s.tab, ...(tab === "users" ? s.tabActive : {}) }}
@@ -32,19 +32,106 @@ export default function AdminPage() {
             style={{ ...s.tab, ...(tab === "jackpot" ? s.tabActive : {}), ...(tab !== "jackpot" ? s.tabJackpot : {}) }}
             onClick={() => setTab("jackpot")}
           >
-            🎰 Jackpot Control
+            🎰 Control
+          </button>
+          <button
+            style={{ ...s.tab, ...(tab === "logs" ? s.tabActive : {}) }}
+            onClick={() => setTab("logs")}
+          >
+            📋 Logs
           </button>
         </div>
 
-        {tab === "codes" && <CodesTab />}
-        {tab === "users" && <UsersTab />}
+        {tab === "codes"   && <CodesTab />}
+        {tab === "users"   && <UsersTab />}
         {tab === "jackpot" && <JackpotTab />}
+        {tab === "logs"    && <LogsTab />}
       </div>
     </div>
   );
 }
 
 // ── CODES TAB ─────────────────────────────────────────────────────────────────
+
+// ── SHARED: SEARCH + PAGINATION ──────────────────────────────────────────────
+
+const PAGE_SIZES = [10, 50, 100, 500, 1000];
+
+function SearchInput({ value, onChange, placeholder = "Cari username…" }) {
+  return (
+    <div style={{ position: "relative" }}>
+      <span style={s.searchIcon}>🔍</span>
+      <input
+        style={s.searchInput}
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {value && (
+        <button style={s.searchClear} onClick={() => onChange("")}>✕</button>
+      )}
+    </div>
+  );
+}
+
+function Pagination({ page, pageSize, total, onPage, onPageSize }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(total, page * pageSize);
+
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page > 3) pages.push("…");
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+    if (page < totalPages - 2) pages.push("…");
+    pages.push(totalPages);
+  }
+
+  return (
+    <div style={s.pagWrap}>
+      <div style={s.pagSizes}>
+        <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>Per halaman:</span>
+        {PAGE_SIZES.map(sz => (
+          <button
+            key={sz}
+            style={{ ...s.pageBtn, ...(pageSize === sz ? s.pageBtnOn : {}) }}
+            onClick={() => { onPageSize(sz); onPage(1); }}
+          >
+            {sz}
+          </button>
+        ))}
+      </div>
+      <div style={s.pagNav}>
+        <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>
+          {total === 0 ? "Tidak ada data" : `${from}–${to} dari ${total}`}
+        </span>
+        <button
+          style={{ ...s.pageBtn, ...(page <= 1 ? s.pageBtnOff : {}) }}
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+        >‹</button>
+        {pages.map((p, i) =>
+          p === "…"
+            ? <span key={`d${i}`} style={{ color: C.muted, fontSize: 12, padding: "0 2px" }}>…</span>
+            : <button
+                key={p}
+                style={{ ...s.pageBtn, ...(page === p ? s.pageBtnOn : {}) }}
+                onClick={() => onPage(p)}
+              >{p}</button>
+        )}
+        <button
+          style={{ ...s.pageBtn, ...(page >= totalPages ? s.pageBtnOff : {}) }}
+          onClick={() => onPage(page + 1)}
+          disabled={page >= totalPages}
+        >›</button>
+      </div>
+    </div>
+  );
+}
 
 const USE_LIMITS = ["1", "5", "10", "25"];
 
@@ -274,12 +361,18 @@ function CodesTab() {
 // ── USERS TAB ─────────────────────────────────────────────────────────────────
 
 function UsersTab() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null); // { userId, mode: "coins"|"password" }
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [editing, setEditing]   = useState(null);
   const [inputVal, setInputVal] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState({}); // { [userId]: { type, msg } }
+  const [saving, setSaving]     = useState(false);
+  const [feedback, setFeedback] = useState({});
+  const [search, setSearch]     = useState("");
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const handleSearch  = (v)  => { setSearch(v);   setPage(1); };
+  const handlePgSize  = (sz) => { setPageSize(sz); setPage(1); };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -339,6 +432,9 @@ function UsersTab() {
 
   if (loading) return <div style={s.card}><p style={s.empty}>Memuat data pengguna…</p></div>;
 
+  const filtered = users.filter(u => u.username.toLowerCase().includes(search.toLowerCase()));
+  const paged    = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div style={s.card}>
       <div style={s.rowBetween}>
@@ -346,16 +442,17 @@ function UsersTab() {
         <button style={s.refreshBtn} onClick={fetchUsers}>↻ Refresh</button>
       </div>
 
-      {users.length === 0 ? (
-        <p style={s.empty}>Belum ada pengguna.</p>
+      <SearchInput value={search} onChange={handleSearch} />
+
+      {filtered.length === 0 ? (
+        <p style={s.empty}>{search ? "Pengguna tidak ditemukan." : "Belum ada pengguna."}</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {users.map((u) => {
+          {paged.map((u) => {
             const isEditing = editing?.userId === String(u._id);
-            const fb = feedback[String(u._id)];
+            const fb        = feedback[String(u._id)];
             return (
               <div key={u._id} style={s.userBlock}>
-                {/* USER ROW */}
                 <div style={s.userRow}>
                   <div style={s.userAvatar}>{u.username[0].toUpperCase()}</div>
                   <div style={s.userInfo}>
@@ -378,14 +475,12 @@ function UsersTab() {
                   </div>
                 </div>
 
-                {/* FEEDBACK */}
                 {fb && (
                   <p style={{ ...s.feedbackMsg, ...(fb.type === "ok" ? s.feedbackOk : s.feedbackErr) }}>
                     {fb.type === "ok" ? "✓ " : "✕ "}{fb.msg}
                   </p>
                 )}
 
-                {/* EDIT PANEL */}
                 {isEditing && (
                   <div style={s.editPanel}>
                     {editing.mode === "coins" ? (
@@ -432,6 +527,10 @@ function UsersTab() {
           })}
         </div>
       )}
+
+      {filtered.length > 0 && (
+        <Pagination page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={handlePgSize} />
+      )}
     </div>
   );
 }
@@ -442,20 +541,31 @@ function JackpotTab() {
   const [users, setUsers]       = useState([]);
   const [jackpots, setJackpots] = useState([]);
   const [wins, setWins]         = useState([]);
+  const [loses, setLoses]       = useState([]);
   const [loading, setLoading]   = useState(true);
-  const [busy, setBusy]         = useState(null); // userId being processed
+  const [busy, setBusy]         = useState(null);
+  const [jSearch, setJSearch]   = useState("");
+  const [jPage, setJPage]       = useState(1);
+  const [jPageSize, setJPageSize] = useState(10);
+  const [setModal, setSetModal] = useState(null); // { uid, username, type: "win"|"lose" }
+  const [setCount, setSetCount] = useState(1);
+
+  const handleJSearch = (v)  => { setJSearch(v);    setJPage(1); };
+  const handleJPgSize = (sz) => { setJPageSize(sz); setJPage(1); };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, jRes, wRes] = await Promise.all([
+      const [uRes, jRes, wRes, lRes] = await Promise.all([
         fetch("/api/admin/users",   { headers: authHeader() }),
         fetch("/api/admin/jackpot", { headers: authHeader() }),
         fetch("/api/admin/win",     { headers: authHeader() }),
+        fetch("/api/admin/lose",    { headers: authHeader() }),
       ]);
       if (uRes.ok) setUsers((await uRes.json()).users);
       if (jRes.ok) setJackpots((await jRes.json()).jackpots);
       if (wRes.ok) setWins((await wRes.json()).wins);
+      if (lRes.ok) setLoses((await lRes.json()).loses);
     } catch (e) {}
     finally { setLoading(false); }
   }, []);
@@ -464,6 +574,27 @@ function JackpotTab() {
 
   const jackpotIds = new Set(jackpots.map(j => j.userId));
   const winIds     = new Set(wins.map(w => w.userId));
+  const loseIds    = new Set(loses.map(l => l.userId));
+
+  const openSetModal = (uid, username, type) => {
+    setSetModal({ uid, username, type });
+    setSetCount(1);
+  };
+
+  const confirmSet = async () => {
+    const { uid, username, type } = setModal;
+    setBusy(uid + "_" + type);
+    try {
+      const endpoint = type === "win" ? "/api/admin/win" : "/api/admin/lose";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid, username, count: setCount }),
+      });
+      if (res.ok) { await fetchAll(); setSetModal(null); }
+    } catch (e) {}
+    finally { setBusy(null); }
+  };
 
   const setJackpot = async (userId, username) => {
     setBusy(userId + "_jackpot");
@@ -481,23 +612,7 @@ function JackpotTab() {
   const cancelJackpot = async (userId) => {
     setBusy(userId + "_jackpot");
     try {
-      const res = await fetch(`/api/admin/jackpot/${userId}`, {
-        method: "DELETE",
-        headers: authHeader(),
-      });
-      if (res.ok) await fetchAll();
-    } catch (e) {}
-    finally { setBusy(null); }
-  };
-
-  const setWin = async (userId, username) => {
-    setBusy(userId + "_win");
-    try {
-      const res = await fetch("/api/admin/win", {
-        method: "POST",
-        headers: { ...authHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, username }),
-      });
+      const res = await fetch(`/api/admin/jackpot/${userId}`, { method: "DELETE", headers: authHeader() });
       if (res.ok) await fetchAll();
     } catch (e) {}
     finally { setBusy(null); }
@@ -506,10 +621,16 @@ function JackpotTab() {
   const cancelWin = async (userId) => {
     setBusy(userId + "_win");
     try {
-      const res = await fetch(`/api/admin/win/${userId}`, {
-        method: "DELETE",
-        headers: authHeader(),
-      });
+      const res = await fetch(`/api/admin/win/${userId}`, { method: "DELETE", headers: authHeader() });
+      if (res.ok) await fetchAll();
+    } catch (e) {}
+    finally { setBusy(null); }
+  };
+
+  const cancelLose = async (userId) => {
+    setBusy(userId + "_lose");
+    try {
+      const res = await fetch(`/api/admin/lose/${userId}`, { method: "DELETE", headers: authHeader() });
       if (res.ok) await fetchAll();
     } catch (e) {}
     finally { setBusy(null); }
@@ -517,7 +638,7 @@ function JackpotTab() {
 
   if (loading) return <div style={s.card}><p style={s.empty}>Memuat data…</p></div>;
 
-  const activeCount = wins.length + jackpots.length;
+  const activeCount = wins.length + loses.length + jackpots.length;
 
   return (
     <>
@@ -535,7 +656,7 @@ function JackpotTab() {
           <button style={s.refreshBtn} onClick={fetchAll}>↻ Refresh</button>
         </div>
 
-        {wins.length === 0 && jackpots.length === 0 ? (
+        {activeCount === 0 ? (
           <p style={s.empty}>Tidak ada kontrol aktif saat ini.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -545,13 +666,35 @@ function JackpotTab() {
                   <span style={{ fontSize: 24 }}>🏆</span>
                   <div>
                     <p style={s.jackpotUser}>{w.username}</p>
-                    <p style={{ ...s.jackpotNote, color: C.win }}>Menang pada game berikutnya</p>
+                    <p style={{ ...s.jackpotNote, color: C.win }}>
+                      Menang {w.count > 1 ? `${w.count}× ` : ""}pada game berikutnya
+                    </p>
                   </div>
                 </div>
                 <button
                   style={{ ...s.cancelWinBtn, ...(busy === w.userId + "_win" ? s.btnDisabled : {}) }}
                   onClick={() => cancelWin(w.userId)}
                   disabled={busy === w.userId + "_win"}
+                >
+                  Batalkan
+                </button>
+              </div>
+            ))}
+            {loses.map(l => (
+              <div key={l.userId} style={s.loseActiveRow}>
+                <div style={s.jackpotInfo}>
+                  <span style={{ fontSize: 24 }}>💀</span>
+                  <div>
+                    <p style={s.jackpotUser}>{l.username}</p>
+                    <p style={{ ...s.jackpotNote, color: C.lose }}>
+                      Kalah {l.count > 1 ? `${l.count}× ` : ""}pada game berikutnya
+                    </p>
+                  </div>
+                </div>
+                <button
+                  style={{ ...s.cancelLoseBtn, ...(busy === l.userId + "_lose" ? s.btnDisabled : {}) }}
+                  onClick={() => cancelLose(l.userId)}
+                  disabled={busy === l.userId + "_lose"}
                 >
                   Batalkan
                 </button>
@@ -581,92 +724,333 @@ function JackpotTab() {
 
       {/* USER LIST */}
       <div style={s.card}>
-        <h3 style={s.cardTitle}>Kontrol per User</h3>
+        <div style={s.rowBetween}>
+          <h3 style={s.cardTitle}>Kontrol per User</h3>
+          <button style={s.refreshBtn} onClick={fetchAll}>↻ Refresh</button>
+        </div>
         <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
           🏆 Menang — user pasti menang di game berikutnya (berlaku untuk semua game).<br />
           🎰 Jackpot — slot menampilkan 7️⃣×3 pada spin berikutnya (lebih prioritas).
         </p>
 
-        {users.length === 0 ? (
-          <p style={s.empty}>Belum ada pengguna.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {users.map(u => {
-              const uid = String(u._id);
-              const hasWin     = winIds.has(uid);
-              const hasJackpot = jackpotIds.has(uid);
-              const busyWin    = busy === uid + "_win";
-              const busyJackpot = busy === uid + "_jackpot";
+        <SearchInput value={jSearch} onChange={handleJSearch} />
 
-              let blockStyle = s.userBlock;
-              if (hasJackpot) blockStyle = { ...s.userBlock, ...s.userBlockActive };
-              else if (hasWin) blockStyle = { ...s.userBlock, ...s.userBlockWin };
+        {(() => {
+          const filteredUsers = users.filter(u => u.username.toLowerCase().includes(jSearch.toLowerCase()));
+          const pagedUsers    = filteredUsers.slice((jPage - 1) * jPageSize, jPage * jPageSize);
+          return filteredUsers.length === 0 ? (
+            <p style={s.empty}>{jSearch ? "Pengguna tidak ditemukan." : "Belum ada pengguna."}</p>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pagedUsers.map(u => {
+                  const uid         = String(u._id);
+                  const hasWin      = winIds.has(uid);
+                  const hasLose     = loseIds.has(uid);
+                  const hasJackpot  = jackpotIds.has(uid);
+                  const busyWin     = busy === uid + "_win";
+                  const busyLose    = busy === uid + "_lose";
+                  const busyJackpot = busy === uid + "_jackpot";
+                  const winCount    = wins.find(w => w.userId === uid)?.count || 1;
+                  const loseCount   = loses.find(l => l.userId === uid)?.count || 1;
+                  const showPicker  = setModal?.uid === uid;
 
-              return (
-                <div key={uid} style={blockStyle}>
-                  <div style={s.userRow}>
-                    <div style={s.userAvatar}>{u.username[0].toUpperCase()}</div>
-                    <div style={s.userInfo}>
-                      <span style={s.userName}>{u.username}</span>
-                      <span style={s.userCoins}>🪙 {fmt(u.coins ?? 10000)}</span>
-                    </div>
-                  </div>
+                  let blockStyle = s.userBlock;
+                  if (hasJackpot) blockStyle = { ...s.userBlock, ...s.userBlockActive };
+                  else if (hasWin) blockStyle = { ...s.userBlock, ...s.userBlockWin };
+                  else if (hasLose) blockStyle = { ...s.userBlock, ...s.userBlockLose };
 
-                  {/* CONTROLS ROW */}
-                  <div style={s.controlsRow}>
-                    {/* WIN */}
-                    <div style={s.controlGroup}>
-                      <span style={{ ...s.controlLabel, color: hasWin ? C.win : C.muted }}>🏆 Menang</span>
-                      {hasWin ? (
-                        <button
-                          style={{ ...s.cancelWinBtn, fontSize: 11, padding: "4px 10px", ...(busyWin ? s.btnDisabled : {}) }}
-                          onClick={() => cancelWin(uid)}
-                          disabled={busyWin}
-                        >
-                          {busyWin ? "…" : "Aktif · Batalkan"}
-                        </button>
-                      ) : (
-                        <button
-                          style={{ ...s.setWinBtn, fontSize: 11, padding: "5px 10px", ...(busyWin ? s.btnDisabled : {}) }}
-                          onClick={() => setWin(uid, u.username)}
-                          disabled={busyWin}
-                        >
-                          {busyWin ? "…" : "Atur"}
-                        </button>
+                  return (
+                    <div key={uid} style={blockStyle}>
+                      <div style={s.userRow}>
+                        <div style={s.userAvatar}>{u.username[0].toUpperCase()}</div>
+                        <div style={s.userInfo}>
+                          <span style={s.userName}>{u.username}</span>
+                          <span style={s.userCoins}>🪙 {fmt(u.coins ?? 10000)}</span>
+                        </div>
+                      </div>
+
+                      {/* WIN | LOSE | JACKPOT controls */}
+                      <div style={s.controlsRow}>
+                        {/* WIN */}
+                        <div style={s.controlGroup}>
+                          <span style={{ ...s.controlLabel, color: hasWin ? C.win : C.muted }}>
+                            🏆{hasWin && winCount > 1 ? ` ×${winCount}` : " Menang"}
+                          </span>
+                          {hasWin ? (
+                            <button
+                              style={{ ...s.cancelWinBtn, fontSize: 11, padding: "4px 8px", ...(busyWin ? s.btnDisabled : {}) }}
+                              onClick={() => cancelWin(uid)}
+                              disabled={busyWin}
+                            >
+                              {busyWin ? "…" : "Batalkan"}
+                            </button>
+                          ) : (
+                            <button
+                              style={{ ...s.setWinBtn, fontSize: 11, padding: "5px 10px", ...(showPicker && setModal.type === "win" ? s.btnDisabled : {}) }}
+                              onClick={() => showPicker && setModal.type === "win" ? setSetModal(null) : openSetModal(uid, u.username, "win")}
+                            >
+                              {showPicker && setModal.type === "win" ? "✕" : "Atur"}
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={s.controlDivider} />
+
+                        {/* LOSE */}
+                        <div style={s.controlGroup}>
+                          <span style={{ ...s.controlLabel, color: hasLose ? C.lose : C.muted }}>
+                            💀{hasLose && loseCount > 1 ? ` ×${loseCount}` : " Kalah"}
+                          </span>
+                          {hasLose ? (
+                            <button
+                              style={{ ...s.cancelLoseBtn, fontSize: 11, padding: "4px 8px", ...(busyLose ? s.btnDisabled : {}) }}
+                              onClick={() => cancelLose(uid)}
+                              disabled={busyLose}
+                            >
+                              {busyLose ? "…" : "Batalkan"}
+                            </button>
+                          ) : (
+                            <button
+                              style={{ ...s.setLoseBtn, fontSize: 11, padding: "5px 10px" }}
+                              onClick={() => showPicker && setModal.type === "lose" ? setSetModal(null) : openSetModal(uid, u.username, "lose")}
+                            >
+                              {showPicker && setModal.type === "lose" ? "✕" : "Atur"}
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={s.controlDivider} />
+
+                        {/* JACKPOT */}
+                        <div style={s.controlGroup}>
+                          <span style={{ ...s.controlLabel, color: hasJackpot ? "#f87171" : C.muted }}>🎰 Jackpot</span>
+                          {hasJackpot ? (
+                            <button
+                              style={{ ...s.cancelJackpotBtn, fontSize: 11, padding: "4px 8px", ...(busyJackpot ? s.btnDisabled : {}) }}
+                              onClick={() => cancelJackpot(uid)}
+                              disabled={busyJackpot}
+                            >
+                              {busyJackpot ? "…" : "Batalkan"}
+                            </button>
+                          ) : (
+                            <button
+                              style={{ ...s.setJackpotBtn, fontSize: 11, padding: "5px 10px", ...(busyJackpot ? s.btnDisabled : {}) }}
+                              onClick={() => setJackpot(uid, u.username)}
+                              disabled={busyJackpot}
+                            >
+                              {busyJackpot ? "…" : "Atur"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* COUNT PICKER (Win / Lose) */}
+                      {showPicker && (
+                        <div style={s.editPanel}>
+                          <label style={s.editLabel}>
+                            Jumlah {setModal.type === "win" ? "kemenangan" : "kekalahan"} berturut-turut
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            {[1, 2, 3, 5, 10].map(n => (
+                              <button
+                                key={n}
+                                style={{ ...s.countChip, ...(setCount === n ? s.countChipOn : {}) }}
+                                onClick={() => setSetCount(n)}
+                              >{n}×</button>
+                            ))}
+                            <input
+                              type="number" min="1" max="99"
+                              value={setCount}
+                              style={{ ...s.editInput, width: 72, padding: "6px 10px", fontSize: 13 }}
+                              onChange={e => {
+                                const v = parseInt(e.target.value, 10);
+                                if (!isNaN(v) && v >= 1 && v <= 99) setSetCount(v);
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <button style={s.cancelBtn} onClick={() => setSetModal(null)}>Batal</button>
+                            <button
+                              style={{
+                                ...s.saveBtn,
+                                ...(setModal.type === "lose"
+                                  ? { background: `linear-gradient(135deg, ${C.lose}, #b85a45)` }
+                                  : {}),
+                                ...(busy === uid + "_" + setModal.type ? s.btnDisabled : {}),
+                              }}
+                              onClick={confirmSet}
+                              disabled={busy === uid + "_" + setModal.type}
+                            >
+                              {busy === uid + "_" + setModal.type ? "…" : `Konfirmasi ${setCount}×`}
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    <div style={s.controlDivider} />
-
-                    {/* JACKPOT */}
-                    <div style={s.controlGroup}>
-                      <span style={{ ...s.controlLabel, color: hasJackpot ? "#f87171" : C.muted }}>🎰 Jackpot</span>
-                      {hasJackpot ? (
-                        <button
-                          style={{ ...s.cancelJackpotBtn, fontSize: 11, padding: "4px 10px", ...(busyJackpot ? s.btnDisabled : {}) }}
-                          onClick={() => cancelJackpot(uid)}
-                          disabled={busyJackpot}
-                        >
-                          {busyJackpot ? "…" : "Aktif · Batalkan"}
-                        </button>
-                      ) : (
-                        <button
-                          style={{ ...s.setJackpotBtn, fontSize: 11, padding: "5px 10px", ...(busyJackpot ? s.btnDisabled : {}) }}
-                          onClick={() => setJackpot(uid, u.username)}
-                          disabled={busyJackpot}
-                        >
-                          {busyJackpot ? "…" : "Atur"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  );
+                })}
+              </div>
+              <Pagination page={jPage} pageSize={jPageSize} total={filteredUsers.length} onPage={setJPage} onPageSize={handleJPgSize} />
+            </>
+          );
+        })()}
       </div>
     </>
+  );
+}
+
+// ── LOGS TAB ──────────────────────────────────────────────────────────────────
+
+const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+function fmtTime(iso) {
+  const d = new Date(iso);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${h}:${m}`;
+}
+
+const RESULT_FILTERS = ["semua", "win", "jackpot", "impas", "lose"];
+const GAME_FILTERS   = ["semua", "slot", "dadu"];
+
+function LogsTab() {
+  const [logs, setLogs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState("");
+  const [gameF, setGameF]     = useState("semua");
+  const [resultF, setResultF] = useState("semua");
+  const [page, setPage]       = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const handleSearch  = (v)  => { setSearch(v);    setPage(1); };
+  const handlePgSize  = (sz) => { setPageSize(sz); setPage(1); };
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/logs", { headers: authHeader() });
+      if (res.ok) setLogs((await res.json()).logs);
+    } catch (e) {}
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  if (loading) return <div style={s.card}><p style={s.empty}>Memuat logs…</p></div>;
+
+  const filtered = logs.filter(l => {
+    const matchUser   = l.username.toLowerCase().includes(search.toLowerCase());
+    const matchGame   = gameF   === "semua" || l.game   === gameF;
+    const matchResult = resultF === "semua" || l.result === resultF;
+    return matchUser && matchGame && matchResult;
+  });
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  // Stats for current filter
+  const totalWin  = filtered.filter(l => l.result === "win" || l.result === "jackpot").length;
+  const totalLose = filtered.filter(l => l.result === "lose").length;
+  const netDelta  = filtered.reduce((sum, l) => sum + l.delta, 0);
+
+  return (
+    <div style={s.card}>
+      {/* Header */}
+      <div style={s.rowBetween}>
+        <h3 style={s.cardTitle}>
+          Logs
+          <span style={s.countBadge}>{filtered.length}</span>
+        </h3>
+        <button style={s.refreshBtn} onClick={fetchLogs}>↻ Refresh</button>
+      </div>
+
+      {/* Quick stats */}
+      <div style={s.logStats}>
+        <div style={s.logStat}>
+          <span style={{ color: C.win, fontWeight: 700 }}>{totalWin}</span>
+          <span style={{ fontSize: 11, color: C.muted }}>Menang</span>
+        </div>
+        <div style={s.logStatDiv} />
+        <div style={s.logStat}>
+          <span style={{ color: C.lose, fontWeight: 700 }}>{totalLose}</span>
+          <span style={{ fontSize: 11, color: C.muted }}>Kalah</span>
+        </div>
+        <div style={s.logStatDiv} />
+        <div style={s.logStat}>
+          <span style={{ color: netDelta >= 0 ? C.win : C.lose, fontWeight: 700 }}>
+            {netDelta >= 0 ? "+" : ""}{fmt(netDelta)}
+          </span>
+          <span style={{ fontSize: 11, color: C.muted }}>Net Delta</span>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {GAME_FILTERS.map(g => (
+          <button
+            key={g}
+            style={{ ...s.filterChip, ...(gameF === g ? s.filterChipOn : {}) }}
+            onClick={() => { setGameF(g); setPage(1); }}
+          >
+            {g === "semua" ? "🎮 Semua" : g === "slot" ? "🎰 Slot" : "🎲 Dadu"}
+          </button>
+        ))}
+        <div style={{ width: 1, background: `${C.line}88`, height: 28, alignSelf: "center" }} />
+        {RESULT_FILTERS.map(r => (
+          <button
+            key={r}
+            style={{ ...s.filterChip, ...(resultF === r ? s.filterChipOn : {}) }}
+            onClick={() => { setResultF(r); setPage(1); }}
+          >
+            {r === "semua" ? "Semua" : r === "win" ? "Menang" : r === "jackpot" ? "Jackpot" : r === "impas" ? "Impas" : "Kalah"}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <SearchInput value={search} onChange={handleSearch} />
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <p style={s.empty}>{search || gameF !== "semua" || resultF !== "semua" ? "Tidak ada log yang cocok." : "Belum ada log."}</p>
+      ) : (
+        <>
+          {/* Head */}
+          <div style={{ ...s.logRow, ...s.logHead }}>
+            <span>User</span>
+            <span>Game</span>
+            <span style={{ textAlign: "right" }}>Bet</span>
+            <span style={{ textAlign: "center" }}>Hasil</span>
+            <span style={{ textAlign: "right" }}>Delta</span>
+          </div>
+          {/* Rows */}
+          {paged.map((l) => (
+            <div key={l._id} style={s.logRow}>
+              <div>
+                <p style={s.logUser}>{l.username}{l.forced && <span style={s.forcedBadge}>F</span>}</p>
+                <p style={s.logTime}>{fmtTime(l.createdAt)}</p>
+              </div>
+              <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : s.gameBadgeDadu) }}>
+                {l.game === "slot" ? "Slot" : "Dadu"}
+              </span>
+              <span style={{ fontSize: 12, color: C.muted, textAlign: "right" }}>{fmt(l.bet)}</span>
+              <span style={{ textAlign: "center" }}>
+                {l.result === "jackpot" && <span style={s.badgeJackpot}>Jackpot</span>}
+                {l.result === "win"     && <span style={s.badgeAvail}>Menang</span>}
+                {l.result === "impas"   && <span style={s.badgePart}>Impas</span>}
+                {l.result === "lose"    && <span style={s.badgeUsed}>Kalah</span>}
+              </span>
+              <span style={{
+                fontSize: 13, fontWeight: 700, textAlign: "right",
+                color: l.delta > 0 ? C.win : l.delta < 0 ? C.lose : C.muted,
+              }}>
+                {l.delta > 0 ? "+" : ""}{fmt(l.delta)}
+              </span>
+            </div>
+          ))}
+
+          <Pagination page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={handlePgSize} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -866,6 +1250,11 @@ const s = {
     background: "#2a100e",
     boxShadow: "0 0 14px -6px #f8717144",
   },
+  userBlockLose: {
+    border: `1px solid ${C.lose}55`,
+    background: "#2a100e",
+    boxShadow: `0 0 14px -6px ${C.lose}44`,
+  },
   userBlockWin: {
     border: `1px solid ${C.win}55`,
     background: "#0a2415",
@@ -915,6 +1304,32 @@ const s = {
     borderRadius: 8, padding: "6px 12px", cursor: "pointer",
     color: C.win, fontSize: 12, fontWeight: 600, flexShrink: 0,
   },
+  setLoseBtn: {
+    background: `linear-gradient(135deg, ${C.lose}, #b85a45)`,
+    border: "none", borderRadius: 8, padding: "7px 14px",
+    cursor: "pointer", color: "#fff", fontSize: 12, fontWeight: 700,
+    whiteSpace: "nowrap", flexShrink: 0,
+  },
+  cancelLoseBtn: {
+    background: "none", border: `1px solid ${C.lose}66`,
+    borderRadius: 8, padding: "6px 12px", cursor: "pointer",
+    color: C.lose, fontSize: 12, fontWeight: 600, flexShrink: 0,
+  },
+  loseActiveRow: {
+    background: "#2a100e", border: `1px solid ${C.lose}55`,
+    borderRadius: 14, padding: "14px 16px",
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+    boxShadow: `0 0 18px -8px ${C.lose}55`,
+  },
+  // count picker
+  countChip: {
+    background: C.panel2, border: `1px solid ${C.line}`,
+    borderRadius: 8, padding: "5px 12px", cursor: "pointer",
+    color: C.muted, fontSize: 13, fontWeight: 700,
+  },
+  countChipOn: {
+    background: `${C.gold}22`, border: `1px solid ${C.gold}66`, color: C.goldHi,
+  },
   controlsRow: {
     display: "flex", alignItems: "center", gap: 0,
     borderTop: `1px solid ${C.line}44`,
@@ -929,4 +1344,82 @@ const s = {
     width: 1, height: 32, background: `${C.line}88`, flexShrink: 0,
   },
   controlLabel: { fontSize: 12, fontWeight: 600 },
+
+  // LOGS
+  logStats: {
+    display: "flex", alignItems: "center", gap: 0,
+    background: C.panel2, borderRadius: 12, border: `1px solid ${C.line}`,
+    overflow: "hidden",
+  },
+  logStat: {
+    flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+    padding: "10px 8px", gap: 2, fontSize: 14,
+  },
+  logStatDiv: { width: 1, height: 36, background: `${C.line}88`, flexShrink: 0 },
+  filterChip: {
+    background: "none", border: `1px solid ${C.line}`,
+    borderRadius: 8, padding: "5px 10px", cursor: "pointer",
+    color: C.muted, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+  },
+  filterChipOn: { background: `${C.gold}22`, color: C.goldHi, borderColor: `${C.gold}55` },
+  logRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 52px 70px 70px 72px",
+    gap: 8, alignItems: "center",
+    padding: "9px 4px",
+    borderBottom: `1px solid ${C.line}22`,
+  },
+  logHead: {
+    fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.7px",
+    paddingBottom: 6, borderBottom: `1px solid ${C.line}`,
+  },
+  logUser: { fontSize: 13, fontWeight: 600, color: C.cream, margin: 0, display: "flex", alignItems: "center", gap: 5 },
+  logTime: { fontSize: 11, color: C.muted, margin: 0, marginTop: 1 },
+  forcedBadge: {
+    fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+    background: "#a855f722", color: "#c084fc", border: "1px solid #c084fc44",
+    letterSpacing: "0.5px",
+  },
+  logGameBadge: {
+    fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+    textAlign: "center", whiteSpace: "nowrap",
+  },
+  gameBadgeSlot: { background: "#3b82f622", color: "#60a5fa", border: "1px solid #3b82f644" },
+  gameBadgeDadu: { background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b44" },
+  badgeJackpot: {
+    fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 999,
+    background: "#a855f722", color: "#c084fc", border: "1px solid #a855f744",
+  },
+
+  // SEARCH
+  searchInput: {
+    width: "100%", padding: "9px 34px 9px 34px",
+    borderRadius: 10, background: C.ink, border: `1px solid ${C.line}`,
+    color: C.cream, fontSize: 13, outline: "none", boxSizing: "border-box",
+  },
+  searchIcon: {
+    position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)",
+    color: C.muted, fontSize: 13, pointerEvents: "none",
+  },
+  searchClear: {
+    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+    background: "none", border: "none", color: C.muted, cursor: "pointer",
+    fontSize: 12, padding: "2px 4px", lineHeight: 1,
+  },
+
+  // PAGINATION
+  pagWrap: {
+    display: "flex", flexDirection: "column", gap: 8,
+    paddingTop: 10, borderTop: `1px solid ${C.line}33`,
+  },
+  pagSizes: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" },
+  pagNav:   { display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap" },
+  pageBtn: {
+    background: "none", border: `1px solid ${C.line}`,
+    borderRadius: 6, padding: "4px 9px", cursor: "pointer",
+    color: C.muted, fontSize: 12, fontWeight: 600,
+    minWidth: 30, textAlign: "center", lineHeight: 1.4,
+  },
+  pageBtnOn:  { background: `${C.gold}22`, color: C.goldHi, borderColor: `${C.gold}66` },
+  pageBtnOff: { opacity: 0.3, cursor: "not-allowed" },
 };

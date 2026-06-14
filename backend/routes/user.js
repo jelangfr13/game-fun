@@ -88,12 +88,38 @@ router.post("/redeem", requireAuth, async (req, res) => {
   }
 });
 
-// Atomic: check + consume pending forced win for current user
+// Atomic: decrement count or delete when exhausted
 router.post("/claim-win", requireAuth, async (req, res) => {
   try {
     const db = await getDb();
-    const doc = await db.collection("wins").findOneAndDelete({ userId: req.user.id });
-    res.json({ win: !!doc });
+    // If count > 1, decrement and keep the document
+    const dec = await db.collection("wins").findOneAndUpdate(
+      { userId: req.user.id, count: { $gt: 1 } },
+      { $inc: { count: -1 } },
+      { returnDocument: "after" }
+    );
+    if (dec) return res.json({ win: true });
+    // Otherwise delete (count = 1, or legacy doc without count field)
+    const del = await db.collection("wins").findOneAndDelete({ userId: req.user.id });
+    res.json({ win: !!del });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// Atomic: check + consume pending forced lose for current user
+router.post("/claim-lose", requireAuth, async (req, res) => {
+  try {
+    const db = await getDb();
+    const dec = await db.collection("loses").findOneAndUpdate(
+      { userId: req.user.id, count: { $gt: 1 } },
+      { $inc: { count: -1 } },
+      { returnDocument: "after" }
+    );
+    if (dec) return res.json({ lose: true });
+    const del = await db.collection("loses").findOneAndDelete({ userId: req.user.id });
+    res.json({ lose: !!del });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Server error." });
@@ -106,6 +132,56 @@ router.post("/claim-jackpot", requireAuth, async (req, res) => {
     const db = await getDb();
     const doc = await db.collection("jackpots").findOneAndDelete({ userId: req.user.id });
     res.json({ jackpot: !!doc });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// Fetch current user's own game logs
+router.get("/logs", requireAuth, async (req, res) => {
+  try {
+    const db = await getDb();
+    const { game, limit = 50 } = req.query;
+    const query = { userId: req.user.id };
+    if (game && ["slot", "dadu"].includes(game)) query.game = game;
+    const logs = await db.collection("logs")
+      .find(query)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(parseInt(limit) || 50, 200))
+      .toArray();
+    res.json({ logs });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// Fire-and-forget game log from client
+router.post("/log", requireAuth, async (req, res) => {
+  const { game, bet, result, delta, balanceBefore, balanceAfter, details, forced } = req.body ?? {};
+  if (!game || !result || typeof bet !== "number" || typeof delta !== "number")
+    return res.status(400).json({ error: "Data log tidak valid." });
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne(
+      { _id: new ObjectId(req.user.id) },
+      { projection: { username: 1 } }
+    );
+    await db.collection("logs").insertOne({
+      userId: req.user.id,
+      username: user?.username ?? "?",
+      game,
+      bet: Math.round(bet),
+      result,
+      delta: Math.round(delta),
+      balanceBefore: Math.round(balanceBefore ?? 0),
+      balanceAfter:  Math.round(balanceAfter  ?? 0),
+      details: details ?? {},
+      forced: !!forced,
+      createdAt: new Date(),
+    });
+    res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Server error." });

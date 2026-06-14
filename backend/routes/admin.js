@@ -108,14 +108,16 @@ router.get("/win", requireAuth, requireAdmin, async (req, res) => {
 });
 
 router.post("/win", requireAuth, requireAdmin, async (req, res) => {
-  const { userId, username } = req.body ?? {};
+  const { userId, username, count = 1 } = req.body ?? {};
   if (!userId || !username)
     return res.status(400).json({ error: "userId dan username wajib diisi." });
+  if (!Number.isInteger(count) || count < 1 || count > 99)
+    return res.status(400).json({ error: "count harus antara 1–99." });
   try {
     const db = await getDb();
     await db.collection("wins").replaceOne(
       { userId },
-      { userId, username, createdAt: new Date() },
+      { userId, username, count, createdAt: new Date() },
       { upsert: true }
     );
     res.json({ ok: true });
@@ -129,6 +131,67 @@ router.delete("/win/:userId", requireAuth, requireAdmin, async (req, res) => {
   try {
     const db = await getDb();
     await db.collection("wins").deleteOne({ userId: req.params.userId });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// ── LOGS ─────────────────────────────────────────────────────────────────────
+
+router.get("/logs", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = await getDb();
+    const logs = await db.collection("logs")
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(5000)
+      .toArray();
+    res.json({ logs });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// ── LOSES ────────────────────────────────────────────────────────────────────
+
+router.get("/lose", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = await getDb();
+    const loses = await db.collection("loses").find().sort({ createdAt: -1 }).toArray();
+    res.json({ loses });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+router.post("/lose", requireAuth, requireAdmin, async (req, res) => {
+  const { userId, username, count = 1 } = req.body ?? {};
+  if (!userId || !username)
+    return res.status(400).json({ error: "userId dan username wajib diisi." });
+  if (!Number.isInteger(count) || count < 1 || count > 99)
+    return res.status(400).json({ error: "count harus antara 1–99." });
+  try {
+    const db = await getDb();
+    await db.collection("loses").replaceOne(
+      { userId },
+      { userId, username, count, createdAt: new Date() },
+      { upsert: true }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+router.delete("/lose/:userId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = await getDb();
+    await db.collection("loses").deleteOne({ userId: req.params.userId });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);

@@ -4,6 +4,7 @@ import { Store } from "./dadu/store";
 import Die from "./dadu/Die";
 import css from "./dadu/styles";
 import { startDiceRoll, playDiceLand, playWin, playLose } from "./sounds";
+import GameLogsPanel from "./GameLogsPanel";
 
 export default function DaduGanjilGenap({ onTopUp }) {
   const [balance, setBalance] = useState(null);
@@ -12,7 +13,8 @@ export default function DaduGanjilGenap({ onTopUp }) {
   const [dice, setDice] = useState([1, 1]);
   const [rolling, setRolling] = useState(false);
   const [outcome, setOutcome] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast]         = useState(null);
+  const [latestLog, setLatestLog] = useState(null);
   const rollTimer  = useRef(null);
   const spinTimer  = useRef(null);
   const stopSound  = useRef(null);
@@ -55,14 +57,17 @@ export default function DaduGanjilGenap({ onTopUp }) {
     if (rollLock.current || rolling) return;
     rollLock.current = true;
 
-    // Claim forced win before animation starts
-    let forcedWin = false;
+    // Claim forced win / lose before animation starts (win takes priority)
+    let forcedWin  = false;
+    let forcedLose = false;
     try {
-      const r = await fetch("/api/user/claim-win", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("gf_token")}` },
-      });
-      if (r.ok) forcedWin = (await r.json()).win;
+      const token = localStorage.getItem("gf_token");
+      const [wRes, lRes] = await Promise.all([
+        fetch("/api/user/claim-win",  { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/user/claim-lose", { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (wRes.ok) forcedWin  = (await wRes.json()).win;
+      if (lRes.ok) forcedLose = (await lRes.json()).lose;
     } catch (e) {}
 
     let d1 = 1 + Math.floor(Math.random() * 6);
@@ -72,6 +77,12 @@ export default function DaduGanjilGenap({ onTopUp }) {
       // Ensure sum parity matches player's choice
       const wantEven = choice === "genap";
       if (((d1 + d2) % 2 === 0) !== wantEven) {
+        d2 = d2 < 6 ? d2 + 1 : d2 - 1;
+      }
+    } else if (forcedLose) {
+      // Ensure sum parity does NOT match player's choice
+      const wantEven = choice === "genap";
+      if (((d1 + d2) % 2 === 0) === wantEven) {
         d2 = d2 < 6 ? d2 + 1 : d2 - 1;
       }
     }
@@ -102,6 +113,19 @@ export default function DaduGanjilGenap({ onTopUp }) {
       setOutcome({ sum, parity, won, delta });
       if (won) { flash("win", `Menang! +${fmt(delta)} koin`); playWin(); }
       else { flash("lose", `Kalah. ${fmt(delta)} koin`); playLose(); }
+      // Optimistic panel update + fire-and-forget log
+      const logEntry = {
+        game: "dadu", bet, result: won ? "win" : "lose", delta,
+        details: { dice: [d1, d2], sum, parity, choice },
+        forced: forcedWin || forcedLose,
+        createdAt: new Date().toISOString(),
+      };
+      setLatestLog(logEntry);
+      fetch("/api/user/log", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("gf_token")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ...logEntry, balanceBefore: balance, balanceAfter: next }),
+      }).catch(() => {});
     }, 950);
   };
 
@@ -111,7 +135,8 @@ export default function DaduGanjilGenap({ onTopUp }) {
     <div className="dg-root">
       <style>{css}</style>
 
-      <div className="table">
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+      <div className="table" style={{ flex: "0 0 auto" }}>
         {/* HEADER */}
         <header className="hd">
           <div className="hd__brand">
@@ -214,7 +239,10 @@ export default function DaduGanjilGenap({ onTopUp }) {
         {balance === 0 && !rolling && (
           <p className="broke">Saldo habis. Klik tombol Saldo untuk top-up koin.</p>
         )}
-      </div>
+      </div>{/* end table */}
+
+      <GameLogsPanel game="dadu" newEntry={latestLog} />
+      </div>{/* end flex row */}
 
       {toast && <div className={"toast toast--" + toast.type}>{toast.text}</div>}
     </div>
