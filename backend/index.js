@@ -7,13 +7,22 @@ import adminRoutes from "./routes/admin.js";
 
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:4173",
-  process.env.FRONTEND_URL, // set di Vercel env vars: https://game-fun.vercel.app
-].filter(Boolean);
-
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow: no-origin requests (server-to-server), localhost, and *.vercel.app
+    if (
+      !origin ||
+      origin.startsWith("http://localhost") ||
+      origin.endsWith(".vercel.app") ||
+      origin === process.env.FRONTEND_URL
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error(`CORS: ${origin} tidak diizinkan`));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);

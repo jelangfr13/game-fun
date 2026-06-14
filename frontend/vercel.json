@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://GANTI_DENGAN_URL_BACKEND_VERCEL/api/:path*"
+      "destination": "https://game-fun-black.vercel.app/api/:path*"
     },
     {
       "source": "/(.*)",
