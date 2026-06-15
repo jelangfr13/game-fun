@@ -5,6 +5,7 @@ import { getDb } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const STARTING_BALANCE = 10000;
+const LOG_GAMES = ["slot", "dadu", "blackjack", "roulette", "find-the-heart"];
 
 const router = Router();
 
@@ -153,7 +154,7 @@ router.get("/logs", requireAuth, async (req, res) => {
     const db = await getDb();
     const { game, limit = 50 } = req.query;
     const query = { userId: req.user.id };
-    if (game && ["slot", "dadu", "blackjack", "roulette"].includes(game)) query.game = game;
+    if (game && LOG_GAMES.includes(game)) query.game = game;
     const logs = await db.collection("logs")
       .find(query)
       .sort({ createdAt: -1 })

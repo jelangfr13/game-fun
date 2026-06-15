@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { BETS, fmt, fmtShort } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import GameLogsPanel from "./GameLogsPanel";
@@ -9,7 +9,7 @@ import { playWin, playLose, playDiceLand } from "./sounds";
 
 const SUITS = ["♠", "♥", "♦", "♣"];
 const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-const RED_S = new Set(["♥","♦"]);
+const SUIT_CODE = { "♣": "C", "♦": "D", "♥": "H", "♠": "S" };
 
 function drawCard() {
   return {
@@ -75,41 +75,44 @@ function drawDealer(dealerTotal, playerTotal, forceWin) {
 
 // ── CARD COMPONENT ─────────────────────────────────────────────────────────────
 
+function cardAsset(card) {
+  if (!card) return "/cardsjs/RED_BACK.svg";
+  const rank = card.rank === "10" ? "T" : card.rank;
+  return `/cardsjs/${rank}${SUIT_CODE[card.suit]}.svg`;
+}
+
 function Card({ card, faceDown = false, small = false }) {
-  const W = small ? 50 : 62, H = small ? 72 : 88;
+  const W = small ? 54 : 70, H = small ? 76 : 98;
   const base = {
-    width: W, height: H, borderRadius: 8, flexShrink: 0,
-    boxShadow: "2px 4px 12px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.3)",
-    position: "relative", overflow: "hidden",
-    fontFamily: "'Space Mono', monospace", userSelect: "none",
+    width: W,
+    height: H,
+    borderRadius: 8,
+    flexShrink: 0,
+    boxShadow: "2px 6px 14px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.25)",
+    position: "relative",
+    overflow: "visible",
+    userSelect: "none",
   };
-  if (faceDown) return (
-    <div style={{ ...base, background: "#1c3a6e", border: "1px solid #2a4d8a" }}>
-      <div style={{
-        position: "absolute", inset: 4,
-        border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4,
-        background: "repeating-linear-gradient(135deg,#1c3a6e 0,#1c3a6e 5px,#172f5c 5px,#172f5c 10px)",
-      }} />
-    </div>
-  );
-  const red   = RED_S.has(card.suit);
-  const color = red ? "#C62828" : "#1a1a2e";
-  const rf    = small ? 10 : 12;
-  const sf    = small ? 15 : 19;
   return (
-    <div style={{ ...base, background: "#FEFCF5", border: "1px solid rgba(0,0,0,0.1)" }}>
-      <div style={{ position:"absolute", top:4, left:5, fontSize:rf, fontWeight:700, color, lineHeight:1.15 }}>
-        {card.rank}<br/>{card.suit}
-      </div>
-      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:sf, color }}>
-        {card.suit}
-      </div>
-      <div style={{ position:"absolute", bottom:4, right:5, fontSize:rf, fontWeight:700, color, lineHeight:1.15, transform:"rotate(180deg)" }}>
-        {card.rank}<br/>{card.suit}
-      </div>
+    <div style={base}>
+      <img
+        src={faceDown ? "/cardsjs/RED_BACK.svg" : cardAsset(card)}
+        alt={faceDown ? "Kartu tertutup" : `${card.rank}${card.suit}`}
+        draggable="false"
+        style={cardImageStyle}
+      />
     </div>
   );
 }
+
+const cardImageStyle = {
+  width: "100%",
+  height: "100%",
+  display: "block",
+  objectFit: "contain",
+  borderRadius: 8,
+  pointerEvents: "none",
+};
 
 // ── COMPONENT ──────────────────────────────────────────────────────────────────
 
@@ -181,7 +184,8 @@ export default function Blackjack({ onTopUp }) {
   }, []);
 
   const resolve = useCallback((res, ph, dh, totBet) => {
-    let payout = 0, delta = 0;
+    let payout;
+    let delta;
     if (res === "blackjack") {
       const win  = Math.round(totBet * 1.5);
       payout = totBet + win;
@@ -193,8 +197,8 @@ export default function Blackjack({ onTopUp }) {
       payout = totBet;
       delta  = 0;
     } else {
-      payout = 0;
       delta  = -totBet;
+      payout = 0;
     }
 
     updateBalance(balRef.current + payout);
@@ -243,7 +247,9 @@ export default function Blackjack({ onTopUp }) {
         method: "POST", headers: { Authorization: `Bearer ${token}` },
       });
       if (wRes.ok) { const w = await wRes.json(); forceWin = w.win; }
-    } catch (e) {}
+    } catch {
+      /* Forced win is optional; normal deal continues if the API is unavailable. */
+    }
 
     forceWinRef.current = forceWin;
     clearTimeout(dealerTimer.current);
@@ -313,7 +319,7 @@ export default function Blackjack({ onTopUp }) {
   const pVal      = handValue(pHand);
   const dValShow  = revealed ? handValue(dHand) : (dHand[0] ? cardPoints(dHand[0]) : 0);
   const canDeal   = !loading && balance >= bet && phase === "bet";
-  const canDouble = phase === "playing" && pHand.length === 2 && !loading && balRef.current >= bet;
+  const canDouble = phase === "playing" && pHand.length === 2 && !loading && balance >= bet;
   const small     = isMobile;
 
   // ── RENDER ────────────────────────────────────────────────────────────────────

@@ -92,6 +92,19 @@ function LogDetail({ log }) {
       </span>
     );
   }
+  if (log.game === "find-the-heart") {
+    const { cardCount, doubleCount, selectedCard, heartCard, multiplier } = log.details ?? {};
+    if (!selectedCard) return null;
+    return (
+      <span style={P.detail}>
+        Pilih {selectedCard}
+        <span style={{ opacity: 0.6 }}> · As Hati {heartCard}</span>
+        <span style={{ opacity: 0.6 }}> · {cardCount} kartu</span>
+        {doubleCount > 0 ? <span style={P.multi}> Double {doubleCount}x</span> : null}
+        {multiplier > 0 ? <span style={P.multi}> {multiplier}x</span> : null}
+      </span>
+    );
+  }
   return null;
 }
 

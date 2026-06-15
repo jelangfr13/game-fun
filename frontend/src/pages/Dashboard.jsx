@@ -4,6 +4,7 @@ import DaduGanjilGenap from "../DaduGanjilGenap";
 import SlotMachine from "../SlotMachine";
 import Blackjack from "../Blackjack";
 import Roulette from "../Roulette";
+import FindTheHeart from "../FindTheHeart";
 import ProfilePage from "./ProfilePage";
 import TopUpPage from "./TopUpPage";
 import AdminPage from "./AdminPage";
@@ -47,6 +48,15 @@ const GAMES = [
     emoji: "🔴",
     tag: "Tersedia",
     component: Roulette,
+  },
+  {
+    id: "find-the-heart",
+    path: "/find-the-heart",
+    title: "Find the Heart",
+    description: "Temukan As Hati dari kartu tertutup",
+    emoji: "♥️",
+    tag: "Tersedia",
+    component: FindTheHeart,
   },
 ];
 

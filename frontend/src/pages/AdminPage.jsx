@@ -925,7 +925,24 @@ function fmtTime(iso) {
 }
 
 const RESULT_FILTERS = ["semua", "win", "jackpot", "impas", "lose"];
-const GAME_FILTERS   = ["semua", "slot", "dadu", "blackjack", "roulette"];
+const GAME_FILTERS   = ["semua", "slot", "dadu", "blackjack", "roulette", "find-the-heart"];
+
+function logGameLabel(game) {
+  if (game === "slot") return "Slot";
+  if (game === "dadu") return "Dadu";
+  if (game === "blackjack") return "BJ";
+  if (game === "roulette") return "Roul";
+  if (game === "find-the-heart") return "Heart";
+  return game;
+}
+
+function logGameBadgeStyle(game) {
+  if (game === "slot") return s.gameBadgeSlot;
+  if (game === "blackjack") return s.gameBadgeBJ;
+  if (game === "roulette") return s.gameBadgeRoulette;
+  if (game === "find-the-heart") return s.gameBadgeHeart;
+  return s.gameBadgeDadu;
+}
 
 function LogsTab({ isMobile = false, cardPad = 24 }) {
   const [logs, setLogs]       = useState([]);
@@ -1004,6 +1021,7 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
             <option value="dadu">🎲 Dadu</option>
             <option value="blackjack">🃏 Blackjack</option>
             <option value="roulette">🔴 Roulette</option>
+            <option value="find-the-heart">♥️ Find the Heart</option>
           </select>
         </div>
         <div style={s.filterGroup}>
@@ -1046,8 +1064,8 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
                 <p style={s.logTime}>{fmtTime(l.createdAt)}</p>
               </div>
               {!isMobile && (
-                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : l.game === "blackjack" ? s.gameBadgeBJ : l.game === "roulette" ? s.gameBadgeRoulette : s.gameBadgeDadu) }}>
-                  {l.game === "slot" ? "Slot" : l.game === "blackjack" ? "BJ" : l.game === "roulette" ? "Roul" : "Dadu"}
+                <span style={{ ...s.logGameBadge, ...logGameBadgeStyle(l.game) }}>
+                  {logGameLabel(l.game)}
                 </span>
               )}
               {!isMobile && (
@@ -1425,6 +1443,7 @@ const s = {
   gameBadgeDadu: { background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b44" },
   gameBadgeBJ:   { background: "#74C69022", color: "#74C690", border: "1px solid #74C69044" },
   gameBadgeRoulette: { background: "#DC7C6822", color: "#DC7C68", border: "1px solid #DC7C6844" },
+  gameBadgeHeart: { background: "#e11d4822", color: "#fb7185", border: "1px solid #e11d4844" },
   badgeJackpot: {
     fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 999,
     background: "#a855f722", color: "#c084fc", border: "1px solid #a855f744",
