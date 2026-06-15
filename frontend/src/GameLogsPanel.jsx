@@ -152,16 +152,17 @@ export default function GameLogsPanel({ game, newEntry, mobile = false }) {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.ok ? r.json() : { logs: [] })
-      .then(d => setLogs(d.logs ?? []))
+      .then(d => setLogs((d.logs ?? []).filter(log => log.game === game)))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [game]);
 
   useEffect(() => {
     if (!newEntry) return;
+    if (newEntry.game !== game) return;
     setLogs(prev => [newEntry, ...prev].slice(0, 50));
     if (listRef.current) listRef.current.scrollTop = 0;
-  }, [newEntry]);
+  }, [game, newEntry]);
 
   const wrapStyle = mobile
     ? { ...P.wrap, width: "100%", boxSizing: "border-box", position: "static", maxHeight: 320, flexShrink: 1 }
