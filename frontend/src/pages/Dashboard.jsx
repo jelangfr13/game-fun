@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import DaduGanjilGenap from "../DaduGanjilGenap";
 import SlotMachine from "../SlotMachine";
 import Blackjack from "../Blackjack";
+import Roulette from "../Roulette";
 import ProfilePage from "./ProfilePage";
 import TopUpPage from "./TopUpPage";
 import AdminPage from "./AdminPage";
@@ -39,8 +40,8 @@ const GAMES = [
     title: "Roulette",
     description: "Taruhan angka atau warna bola",
     emoji: "🔴",
-    tag: "Segera hadir",
-    component: null,
+    tag: "Tersedia",
+    component: Roulette,
   },
 ];
 

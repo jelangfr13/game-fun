@@ -925,7 +925,7 @@ function fmtTime(iso) {
 }
 
 const RESULT_FILTERS = ["semua", "win", "jackpot", "impas", "lose"];
-const GAME_FILTERS   = ["semua", "slot", "dadu", "blackjack"];
+const GAME_FILTERS   = ["semua", "slot", "dadu", "blackjack", "roulette"];
 
 function LogsTab({ isMobile = false, cardPad = 24 }) {
   const [logs, setLogs]       = useState([]);
@@ -1003,6 +1003,7 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
             <option value="slot">🎰 Slot</option>
             <option value="dadu">🎲 Dadu</option>
             <option value="blackjack">🃏 Blackjack</option>
+            <option value="roulette">🔴 Roulette</option>
           </select>
         </div>
         <div style={s.filterGroup}>
@@ -1045,8 +1046,8 @@ function LogsTab({ isMobile = false, cardPad = 24 }) {
                 <p style={s.logTime}>{fmtTime(l.createdAt)}</p>
               </div>
               {!isMobile && (
-                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : l.game === "blackjack" ? s.gameBadgeBJ : s.gameBadgeDadu) }}>
-                  {l.game === "slot" ? "Slot" : l.game === "blackjack" ? "BJ" : "Dadu"}
+                <span style={{ ...s.logGameBadge, ...(l.game === "slot" ? s.gameBadgeSlot : l.game === "blackjack" ? s.gameBadgeBJ : l.game === "roulette" ? s.gameBadgeRoulette : s.gameBadgeDadu) }}>
+                  {l.game === "slot" ? "Slot" : l.game === "blackjack" ? "BJ" : l.game === "roulette" ? "Roul" : "Dadu"}
                 </span>
               )}
               {!isMobile && (
@@ -1423,6 +1424,7 @@ const s = {
   gameBadgeSlot: { background: "#3b82f622", color: "#60a5fa", border: "1px solid #3b82f644" },
   gameBadgeDadu: { background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b44" },
   gameBadgeBJ:   { background: "#74C69022", color: "#74C690", border: "1px solid #74C69044" },
+  gameBadgeRoulette: { background: "#DC7C6822", color: "#DC7C68", border: "1px solid #DC7C6844" },
   badgeJackpot: {
     fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 999,
     background: "#a855f722", color: "#c084fc", border: "1px solid #a855f744",

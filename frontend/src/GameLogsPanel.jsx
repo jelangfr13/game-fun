@@ -18,6 +18,17 @@ const RESULT_META = {
 
 const DICE_FACES = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 const SYM_EMOJI  = { cherry: "🍒", lemon: "🍋", grapes: "🍇", bell: "🔔", star: "⭐", diamond: "💎", seven: "7️⃣" };
+const ROULETTE_COLOR = { red: "Merah", black: "Hitam", green: "Hijau" };
+
+function rouletteBetLabel(type, value) {
+  if (type === "straight") return `Angka ${value}`;
+  if (type === "color") return value === "red" ? "Merah" : "Hitam";
+  if (type === "parity") return value === "odd" ? "Ganjil" : "Genap";
+  if (type === "range") return value === "low" ? "1-18" : "19-36";
+  if (type === "dozen") return `Lusin ${value}`;
+  if (type === "column") return `Kolom ${value}`;
+  return "Taruhan";
+}
 
 function Badge({ result }) {
   const m = RESULT_META[result] ?? RESULT_META.lose;
@@ -64,6 +75,20 @@ function LogDetail({ log }) {
         <span style={{ opacity: 0.5 }}> vs </span>
         {dealerCards.join(" ")}
         <span style={{ opacity: 0.7 }}> {dealerValue}</span>
+      </span>
+    );
+  }
+  if (log.game === "roulette") {
+    const { number, color, betType, betValue, multiplier } = log.details ?? {};
+    if (number == null) return null;
+    return (
+      <span style={P.detail}>
+        <span style={{ color: color === "red" ? "#DC7C68" : color === "black" ? "#F2EBDD" : "#74C690", fontWeight: 700 }}>
+          {number}
+        </span>
+        <span style={{ marginLeft: 4 }}>{ROULETTE_COLOR[color] ?? color}</span>
+        <span style={{ opacity: 0.6 }}> · {rouletteBetLabel(betType, betValue)}</span>
+        {multiplier > 0 ? <span style={P.multi}> {multiplier}x</span> : null}
       </span>
     );
   }

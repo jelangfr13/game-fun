@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { BETS, fmt, fmtShort } from "./dadu/constants";
 import { Store } from "./dadu/store";
 import { startSlotSpin, playReelStop, playWin, playLose } from "./sounds";
@@ -58,6 +58,7 @@ const PAYOUT_DISPLAY = [
 ];
 
 const STOP_TIMES = [1100, 1650, 2200];
+const DIFFICULTY_MULTIPLIER = 3;
 
 function randSym() {
   return POOL[Math.floor(Math.random() * POOL.length)];
@@ -66,6 +67,15 @@ function randSym() {
 // reels[col][row], 3 cols × 3 rows (initial / spin animation)
 function makeReels() {
   return Array.from({ length: 3 }, () => [randSym(), randSym(), randSym()]);
+}
+
+function makeLosingPayline() {
+  const syms = [];
+  while (syms.length < 3) {
+    const sym = randSym();
+    if (!syms.includes(sym)) syms.push(sym);
+  }
+  return syms;
 }
 
 // Compute outcome from 3 payline symbols (used for the random 57%)
@@ -89,6 +99,12 @@ function pickSpin() {
   }
   const syms = [randSym(), randSym(), randSym()];
   return { syms, outcome: computeOutcome(syms) };
+}
+
+function applyDifficulty(result) {
+  if (result.outcome.multi <= 0) return result;
+  if (Math.random() < 1 / DIFFICULTY_MULTIPLIER) return result;
+  return { syms: makeLosingPayline(), outcome: LOSE };
 }
 
 function getWinPositions(paylineSyms) {
@@ -160,7 +176,9 @@ export default function SlotMachine({ onTopUp }) {
       if (jRes.ok) forceJackpot = (await jRes.json()).jackpot;
       if (wRes.ok) { const w = await wRes.json(); forceWin = w.win; isNewPlayer = !!w.newPlayer; }
       if (lRes.ok) forceLose    = (await lRes.json()).lose;
-    } catch (e) {}
+    } catch {
+      /* Ignore control API failures; the spin continues with the normal random outcome. */
+    }
 
     const RESTRICTED_SYMS = ["seven", "diamond", "star"];
 
@@ -177,10 +195,9 @@ export default function SlotMachine({ onTopUp }) {
       paylineSyms = [picked.sym, picked.sym, picked.sym];
     } else if (forceLose) {
       picked      = LOSE;
-      const shuffled = [...POOL].sort(() => Math.random() - 0.5);
-      paylineSyms = [shuffled[0], shuffled[1], shuffled[2]];
+      paylineSyms = makeLosingPayline();
     } else {
-      const result = pickSpin();
+      const result = applyDifficulty(pickSpin());
       paylineSyms  = result.syms;
       picked       = result.outcome;
     }
