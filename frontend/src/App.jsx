@@ -1,13 +1,10 @@
-import React from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 
 function AppInner() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) return <Splash />;
-  if (!user) return <LoginPage />;
   return <Dashboard />;
 }
 

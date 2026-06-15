@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import DaduGanjilGenap from "../DaduGanjilGenap";
 import SlotMachine from "../SlotMachine";
@@ -7,12 +7,14 @@ import Roulette from "../Roulette";
 import ProfilePage from "./ProfilePage";
 import TopUpPage from "./TopUpPage";
 import AdminPage from "./AdminPage";
+import LoginPage from "./LoginPage";
 import { fmt, fmtShort } from "../dadu/constants";
 import useIsMobile from "../useIsMobile";
 
 const GAMES = [
   {
     id: "dadu",
+    path: "/dadu",
     title: "Ganjil · Genap",
     description: "Tebak total dua dadu: ganjil atau genap",
     emoji: "🎲",
@@ -21,6 +23,7 @@ const GAMES = [
   },
   {
     id: "slot",
+    path: "/mesin-slot",
     title: "Mesin Slot",
     description: "Putar gulungan dan raih jackpot",
     emoji: "🎰",
@@ -29,6 +32,7 @@ const GAMES = [
   },
   {
     id: "blackjack",
+    path: "/blackjack",
     title: "Blackjack",
     description: "Kalahkan dealer tanpa melebihi 21",
     emoji: "🃏",
@@ -37,6 +41,7 @@ const GAMES = [
   },
   {
     id: "roulette",
+    path: "/roulette",
     title: "Roulette",
     description: "Taruhan angka atau warna bola",
     emoji: "🔴",
@@ -45,37 +50,95 @@ const GAMES = [
   },
 ];
 
+const ROUTES = {
+  dashboard: "/dashboard",
+  login: "/login",
+  profile: "/profile",
+  topup: "/top-up",
+  admin: "/admin",
+};
+
+const PROTECTED_ROUTES = new Set([
+  ROUTES.profile,
+  ROUTES.topup,
+  ROUTES.admin,
+  ...GAMES.map((game) => game.path),
+]);
+
+const KNOWN_ROUTES = new Set([
+  ...Object.values(ROUTES),
+  ...GAMES.map((game) => game.path),
+]);
+
+const ROUTE_ALIASES = {
+  "/slot": "/mesin-slot",
+  "/topup": "/top-up",
+};
+
+function normalizePath(path) {
+  if (!path || path === "/") return ROUTES.dashboard;
+  const cleanPath = path.replace(/\/+$/, "");
+  return ROUTE_ALIASES[cleanPath] || cleanPath || ROUTES.dashboard;
+}
+
+function getCurrentPath() {
+  return normalizePath(window.location.pathname);
+}
+
+async function readCoins() {
+  const token = localStorage.getItem("gf_token");
+  if (!token) return null;
+  try {
+    const res = await fetch("/api/user/coins", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.coins;
+  } catch {
+    return null;
+  }
+}
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const [activeGame, setActiveGame] = useState(null);
-  const [page, setPage] = useState("dashboard"); // "dashboard" | "profile" | "topup"
+  const [routePath, setRoutePath] = useState(getCurrentPath);
+  const [postLoginPath, setPostLoginPath] = useState(ROUTES.dashboard);
   const [coins, setCoins] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const isMobile = useIsMobile();
+  const activeGame = GAMES.find((game) => game.path === routePath);
 
   const fetchCoins = useCallback(async () => {
-    const token = localStorage.getItem("gf_token");
-    if (!token) return;
-    try {
-      const res = await fetch("/api/user/coins", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCoins(data.coins);
-      }
-    } catch (e) {}
+    setCoins(await readCoins());
   }, []);
 
   useEffect(() => {
-    fetchCoins();
-  }, [fetchCoins]);
+    if (window.location.pathname === routePath) return undefined;
+    window.history.replaceState({}, "", routePath);
+    return undefined;
+  }, [routePath]);
 
-  // Refresh coins when returning to dashboard
   useEffect(() => {
-    if (page === "dashboard") fetchCoins();
-  }, [page, fetchCoins]);
+    const handler = () => {
+      setRoutePath(getCurrentPath());
+      setDropdownOpen(false);
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!user || routePath !== ROUTES.dashboard) return undefined;
+    let alive = true;
+    readCoins().then((latestCoins) => {
+      if (alive) setCoins(latestCoins);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [routePath, user]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -89,22 +152,82 @@ export default function Dashboard() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
-  const navigate = (dest) => {
-    setPage(dest);
+  const navigate = useCallback((path, options = {}) => {
+    const nextPath = normalizePath(path);
+    if (PROTECTED_ROUTES.has(nextPath) && !user) {
+      setPostLoginPath(nextPath);
+      setRoutePath(ROUTES.login);
+      setDropdownOpen(false);
+      window.history.pushState({}, "", ROUTES.login);
+      return;
+    }
+    setRoutePath(nextPath);
     setDropdownOpen(false);
+    if (options.replace) {
+      window.history.replaceState({}, "", nextPath);
+    } else {
+      window.history.pushState({}, "", nextPath);
+    }
+  }, [user]);
+
+  const handlePlayGame = (game) => {
+    navigate(game.path);
   };
 
   const handleBackToDashboard = () => {
-    setActiveGame(null);
+    navigate(ROUTES.dashboard);
     fetchCoins();
   };
+
+  const handleLogout = () => {
+    logout();
+    setCoins(null);
+    setDropdownOpen(false);
+    navigate(ROUTES.dashboard, { replace: true });
+  };
+
+  useEffect(() => {
+    let redirectPath = null;
+    let pendingPostLoginPath = null;
+
+    if (!KNOWN_ROUTES.has(routePath)) {
+      redirectPath = ROUTES.dashboard;
+    } else if (routePath === ROUTES.login && user) {
+      redirectPath = ROUTES.dashboard;
+    } else if (routePath === ROUTES.admin && user?.username !== "admin") {
+      redirectPath = ROUTES.dashboard;
+    } else if (PROTECTED_ROUTES.has(routePath) && !user) {
+      pendingPostLoginPath = routePath;
+      redirectPath = ROUTES.login;
+    }
+
+    if (!redirectPath) return undefined;
+
+    let alive = true;
+    Promise.resolve().then(() => {
+      if (!alive) return;
+      if (pendingPostLoginPath) setPostLoginPath(pendingPostLoginPath);
+      navigate(redirectPath, { replace: true });
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [navigate, routePath, user]);
+
+  if (PROTECTED_ROUTES.has(routePath) && !user) {
+    return <LoginPage onSuccess={() => navigate(routePath, { replace: true })} />;
+  }
+
+  if (routePath === ROUTES.login && !user) {
+    return <LoginPage onSuccess={() => navigate(postLoginPath, { replace: true })} />;
+  }
 
   // Game view — full screen, no navbar
   if (activeGame) {
     const Game = activeGame.component;
     const handleTopUpFromGame = () => {
-      setActiveGame(null);
-      setPage("topup");
+      navigate(ROUTES.topup);
     };
     return (
       <div style={s.gameWrap}>
@@ -118,62 +241,70 @@ export default function Dashboard() {
 
   const navbar = (
     <nav style={s.nav}>
-      <div style={s.navBrand} onClick={() => navigate("dashboard")} role="button" style={{ ...s.navBrand, cursor: "pointer" }}>
+      <div style={{ ...s.navBrand, cursor: "pointer" }} onClick={() => navigate(ROUTES.dashboard)} role="button">
         <div style={s.navDie}>
           <span style={s.navPip} /><span style={s.navPip} /><span style={s.navPip} />
         </div>
         <span style={s.navTitle}>GameFun</span>
       </div>
       <div style={s.navRight}>
-        <div style={s.coinBadge}>
-          <span style={s.coinIcon}>🪙</span>
-          <span style={s.coinAmt}>{coins == null ? "—" : (isMobile ? fmtShort(coins) : fmt(coins))}</span>
-        </div>
-        <div style={s.navDivider} />
-
-        {/* DROPDOWN */}
-        <div ref={dropdownRef} style={s.dropdownWrap}>
-          <button style={s.profileBtn} onClick={() => setDropdownOpen((o) => !o)}>
-            <div style={s.avatar}>{user?.username?.[0]?.toUpperCase()}</div>
-            <span style={s.navUser}>{user?.username}</span>
-            <span style={{ ...s.chevron, ...(dropdownOpen ? s.chevronUp : {}) }}>▾</span>
-          </button>
-
-          {dropdownOpen && (
-            <div style={s.dropdown}>
-              <button style={s.dropItem} onClick={() => navigate("profile")}>
-                <span style={s.dropIcon}>👤</span> Profil
-              </button>
-              <button style={s.dropItem} onClick={() => navigate("topup")}>
-                <span style={s.dropIcon}>🪙</span> Top Up
-              </button>
-              {user?.username === "admin" && (
-                <>
-                  <div style={s.dropDivider} />
-                  <button style={{ ...s.dropItem, ...s.dropItemAdmin }} onClick={() => navigate("admin")}>
-                    <span style={s.dropIcon}>⚙️</span> Admin Panel
-                  </button>
-                </>
-              )}
-              <div style={s.dropDivider} />
-              <button style={{ ...s.dropItem, ...s.dropItemDanger }} onClick={logout}>
-                <span style={s.dropIcon}>🚪</span> Keluar
-              </button>
+        {user ? (
+          <>
+            <div style={s.coinBadge}>
+              <span style={s.coinIcon}>🪙</span>
+              <span style={s.coinAmt}>{coins == null ? "—" : (isMobile ? fmtShort(coins) : fmt(coins))}</span>
             </div>
-          )}
-        </div>
+            <div style={s.navDivider} />
+
+            {/* DROPDOWN */}
+            <div ref={dropdownRef} style={s.dropdownWrap}>
+              <button style={s.profileBtn} onClick={() => setDropdownOpen((o) => !o)}>
+                <div style={s.avatar}>{user?.username?.[0]?.toUpperCase()}</div>
+                <span style={s.navUser}>{user?.username}</span>
+                <span style={{ ...s.chevron, ...(dropdownOpen ? s.chevronUp : {}) }}>▾</span>
+              </button>
+
+              {dropdownOpen && (
+                <div style={s.dropdown}>
+                  <button style={s.dropItem} onClick={() => navigate(ROUTES.profile)}>
+                    <span style={s.dropIcon}>👤</span> Profil
+                  </button>
+                  <button style={s.dropItem} onClick={() => navigate(ROUTES.topup)}>
+                    <span style={s.dropIcon}>🪙</span> Top Up
+                  </button>
+                  {user?.username === "admin" && (
+                    <>
+                      <div style={s.dropDivider} />
+                      <button style={{ ...s.dropItem, ...s.dropItemAdmin }} onClick={() => navigate(ROUTES.admin)}>
+                        <span style={s.dropIcon}>⚙️</span> Admin Panel
+                      </button>
+                    </>
+                  )}
+                  <div style={s.dropDivider} />
+                  <button style={{ ...s.dropItem, ...s.dropItemDanger }} onClick={handleLogout}>
+                    <span style={s.dropIcon}>🚪</span> Keluar
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <button style={s.loginBtn} onClick={() => navigate(ROUTES.login)}>
+            Masuk
+          </button>
+        )}
       </div>
     </nav>
   );
 
   // Profile page
-  if (page === "profile") {
+  if (routePath === ROUTES.profile) {
     return (
       <div style={s.root}>
         <style>{globalCss}</style>
         {navbar}
         <div style={s.pageHeader}>
-          <button style={s.backLink} onClick={() => navigate("dashboard")}>← Dashboard</button>
+          <button style={s.backLink} onClick={() => navigate(ROUTES.dashboard)}>← Dashboard</button>
           <h1 style={s.pageTitle}>Profil</h1>
         </div>
         <ProfilePage coins={coins} />
@@ -182,13 +313,13 @@ export default function Dashboard() {
   }
 
   // Admin page
-  if (page === "admin") {
+  if (routePath === ROUTES.admin && user?.username === "admin") {
     return (
       <div style={s.root}>
         <style>{globalCss}</style>
         {navbar}
         <div style={s.pageHeader}>
-          <button style={s.backLink} onClick={() => navigate("dashboard")}>← Dashboard</button>
+          <button style={s.backLink} onClick={() => navigate(ROUTES.dashboard)}>← Dashboard</button>
           <h1 style={s.pageTitle}>Admin Panel</h1>
         </div>
         <AdminPage />
@@ -197,13 +328,13 @@ export default function Dashboard() {
   }
 
   // Top Up page
-  if (page === "topup") {
+  if (routePath === ROUTES.topup) {
     return (
       <div style={s.root}>
         <style>{globalCss}</style>
         {navbar}
         <div style={s.pageHeader}>
-          <button style={s.backLink} onClick={() => navigate("dashboard")}>← Dashboard</button>
+          <button style={s.backLink} onClick={() => navigate(ROUTES.dashboard)}>← Dashboard</button>
           <h1 style={s.pageTitle}>Top Up Koin</h1>
         </div>
         <TopUpPage onCoinsUpdated={(newCoins) => setCoins(newCoins)} />
@@ -218,9 +349,9 @@ export default function Dashboard() {
       {navbar}
 
       <section style={s.hero}>
-        <p style={s.heroSub}>Selamat datang kembali,</p>
-        <h1 style={s.heroTitle}>{user?.username} 👋</h1>
-        <p style={s.heroDesc}>Pilih permainan favoritmu dan raih kemenangan hari ini.</p>
+        <p style={s.heroSub}>{user ? "Selamat datang kembali," : "Selamat datang di"}</p>
+        <h1 style={s.heroTitle}>{user ? `${user.username} 👋` : "GameFun"}</h1>
+        <p style={s.heroDesc}>Pilih permainan favoritmu. Masuk diperlukan saat mulai bermain.</p>
       </section>
 
       <section style={s.section}>
@@ -232,7 +363,7 @@ export default function Dashboard() {
               <div
                 key={game.id}
                 style={{ ...s.card, ...(available ? s.cardAvailable : s.cardSoon) }}
-                onClick={() => available && setActiveGame(game)}
+                onClick={() => available && handlePlayGame(game)}
               >
                 <div style={s.cardEmoji}>{game.emoji}</div>
                 <span style={{ ...s.cardTag, ...(available ? s.tagAvailable : s.tagSoon) }}>
@@ -293,6 +424,16 @@ const s = {
     fontSize: 20, color: C.cream,
   },
   navRight: { display: "flex", alignItems: "center", gap: 12 },
+  loginBtn: {
+    background: `linear-gradient(135deg, ${C.goldHi}, ${C.gold})`,
+    border: "none",
+    borderRadius: 8,
+    color: C.ink,
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 700,
+    padding: "9px 16px",
+  },
   coinBadge: {
     display: "flex", alignItems: "center", gap: 6,
     background: "#2C1622", border: `1px solid ${C.gold}44`,

@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
-export default function LoginPage() {
+export default function LoginPage({ onSuccess }) {
   const { login } = useAuth();
   const [mode, setMode] = useState("login"); // 'login' | 'register'
   const [username, setUsername] = useState("");
@@ -22,6 +22,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Terjadi kesalahan.");
       login(data.token, data.user);
+      onSuccess?.();
     } catch (e) {
       setError(e.message);
     } finally {
